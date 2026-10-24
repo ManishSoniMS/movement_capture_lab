@@ -56,6 +56,32 @@ void main() {
   });
 
   group('analysisRotationDegrees', () {
+    test('iOS built-in cameras use the sensor orientation only', () {
+      for (final kind in [CameraKind.front, CameraKind.back]) {
+        expect(
+          analysisRotationDegrees(
+              kind: kind,
+              sensorOrientation: 90,
+              screenDegrees: 270,
+              configRotation: 0,
+              isIOS: true),
+          90,
+        );
+      }
+    });
+
+    test('iOS USB camera still uses the config rotation', () {
+      expect(
+        analysisRotationDegrees(
+            kind: CameraKind.external,
+            sensorOrientation: 0,
+            screenDegrees: 0,
+            configRotation: 180,
+            isIOS: true),
+        180,
+      );
+    });
+
     test('USB camera uses the fixed config rotation, ignoring the screen', () {
       expect(
         analysisRotationDegrees(

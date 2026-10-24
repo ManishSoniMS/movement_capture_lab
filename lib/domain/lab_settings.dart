@@ -19,9 +19,11 @@ class LabSettings {
   double maxClipped = 0.25;
   double minCenterToBorder = 0.6;
   double analysisIntervalMs = 150;
-  bool mirrorExternal = true;
-  bool mirrorFront = true;
-  bool mirrorBack = false;
+  bool? mirrorExternal; // null = platform default
+  bool? mirrorFront;
+  bool? mirrorBack;
+  CaptureOrientation orientation = CaptureOrientation.auto;
+  bool allowNoLiveChecks = true;
 
   /// Camera the operator last picked (in memory only).
   String? lastCameraId;
@@ -40,6 +42,8 @@ class LabSettings {
         mirrorExternalPreview: mirrorExternal,
         mirrorFrontPreview: mirrorFront,
         mirrorBackPreview: mirrorBack,
+        orientation: orientation,
+        allowRecordingWithoutLiveChecks: allowNoLiveChecks,
         safeZoneInset: safeZoneInset,
         minLandmarkLikelihood: minLikelihood,
         minMeanLuma: minLuma.round(),
@@ -47,15 +51,19 @@ class LabSettings {
         maxClippedFraction: maxClipped,
         minCenterToBorderLuma: minCenterToBorder,
         analysisInterval: Duration(milliseconds: analysisIntervalMs.round()),
-        metadata: {'chatSessionId': 'lab-${DateTime.now().millisecondsSinceEpoch}'},
+        metadata: {
+          'chatSessionId': 'lab-${DateTime.now().millisecondsSinceEpoch}'
+        },
       );
 
   /// One line to paste into the PR / tuning notes.
-  String summary() => 'duration=${maxDurationS.round()}s countdown=${countdownS.round()}s '
+  String summary() =>
+      'duration=${maxDurationS.round()}s countdown=${countdownS.round()}s '
       'stable=${stableMs.round()}ms grace=${graceMs.round()}ms restarts=${maxRestarts.round()} '
       'rotation=$rotation res=${resolution.name} inset=${safeZoneInset.toStringAsFixed(3)} '
       'likelihood=${minLikelihood.toStringAsFixed(2)} luma=${minLuma.round()}–${maxLuma.round()} '
       'clipped=${maxClipped.toStringAsFixed(2)} centre/border=${minCenterToBorder.toStringAsFixed(2)} '
       'interval=${analysisIntervalMs.round()}ms '
-      'mirror(usb/front/back)=$mirrorExternal/$mirrorFront/$mirrorBack';
+      'mirror(usb/front/back)=${mirrorExternal ?? 'auto'}/${mirrorFront ?? 'auto'}/${mirrorBack ?? 'auto'} '
+      'orientation=${orientation.name} noLiveChecks=$allowNoLiveChecks';
 }

@@ -66,4 +66,51 @@ void main() {
         width: _w, height: _h, bytesPerRow: stride);
     expect(s.mean, closeTo(120, 0.001));
   });
+
+  group('BGRA (iOS)', () {
+    Uint8List bgra(int Function(int x, int y) gray, {int stride = _w * 4}) {
+      final bytes = Uint8List(stride * _h);
+      for (var y = 0; y < _h; y++) {
+        for (var x = 0; x < _w; x++) {
+          final v = gray(x, y);
+          final i = y * stride + x * 4;
+          bytes[i] = v; // B
+          bytes[i + 1] = v; // G
+          bytes[i + 2] = v; // R
+          bytes[i + 3] = 255; // A
+        }
+      }
+      return bytes;
+    }
+
+    LumaStats stats(Uint8List b, {int stride = _w * 4}) =>
+        LumaStats.fromBgra(b, width: _w, height: _h, bytesPerRow: stride);
+
+    test('grey pixels give their own brightness', () {
+      expect(stats(bgra((_, __) => 120)).mean, closeTo(120, 0.001));
+      expect(stats(bgra((_, __) => 255)).mean, closeTo(255, 0.001));
+    });
+
+    test('dark, bright and evenly lit frames', () {
+      expect(stats(bgra((_, __) => 30)).issueFor(config), CaptureIssue.tooDark);
+      expect(
+          stats(bgra((_, __) => 230)).issueFor(config), CaptureIssue.tooBright);
+      expect(stats(bgra((_, __) => 120)).issueFor(config), isNull);
+    });
+
+    test('pure red is darker than pure white', () {
+      final red = Uint8List(_w * 4 * _h);
+      for (var i = 0; i < red.length; i += 4) {
+        red[i + 2] = 255;
+        red[i + 3] = 255;
+      }
+      expect(stats(red).mean, closeTo(76, 1)); // 0.30 x 255
+    });
+
+    test('respects row stride larger than width x 4', () {
+      const stride = _w * 4 + 64;
+      expect(stats(bgra((_, __) => 120, stride: stride), stride: stride).mean,
+          closeTo(120, 0.001));
+    });
+  });
 }

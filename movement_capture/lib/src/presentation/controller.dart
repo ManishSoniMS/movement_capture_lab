@@ -57,7 +57,9 @@ class MovementCaptureController extends ChangeNotifier {
   CameraChoice? _selected;
   CameraChoice? get selectedCamera => _selected;
 
-  /// True when no USB camera is connected and a tablet camera is in use.
+  static bool get _isIOS => defaultTargetPlatform == TargetPlatform.iOS;
+
+  /// True when no USB camera is connected and a built-in camera is in use.
   bool get usingTabletFallback =>
       _selected != null &&
       !_selected!.isExternal &&
@@ -83,6 +85,7 @@ class MovementCaptureController extends ChangeNotifier {
   bool _disposed = false;
   bool _tornDown = false;
   bool _frameSeenThisPhase = false;
+  bool _liveChecks = true;
   int _restarts = 0;
 
   Timer? _countdownTimer;
@@ -191,7 +194,7 @@ class MovementCaptureController extends ChangeNotifier {
   }
 
   /// Re-lists cameras and reopens: the same camera if still connected,
-  /// otherwise the default rule (a missing USB camera falls back to the tablet).
+  /// otherwise the default rule (a missing USB camera falls back to built-in).
   Future<void> retryCamera() async {
     if (_state is! CameraUnavailable) return;
     await _releaseCamera();
@@ -248,7 +251,8 @@ class MovementCaptureController extends ChangeNotifier {
       choice.description,
       config.resolution,
       enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.nv21,
+      imageFormatGroup:
+          _isIOS ? ImageFormatGroup.bgra8888 : ImageFormatGroup.nv21,
     );
     _camera = cam;
     await cam.initialize();
@@ -257,8 +261,7 @@ class MovementCaptureController extends ChangeNotifier {
       return;
     }
     cam.addListener(_onCameraValue);
-    _analyzer =
-        _analyzerFactory(config, rotationDegrees: _analysisRotation);
+    _analyzer = _analyzerFactory(config, rotationDegrees: _analysisRotation);
     await _beginChecking();
   }
 
@@ -271,6 +274,7 @@ class MovementCaptureController extends ChangeNotifier {
       sensorOrientation: choice.description.sensorOrientation,
       screenDegrees: _orientationDegrees[cam.value.deviceOrientation] ?? 0,
       configRotation: config.cameraRotationDegrees,
+      isIOS: _isIOS,
     );
   }
 
@@ -336,12 +340,26 @@ class MovementCaptureController extends ChangeNotifier {
       // throws if one is already running.
       if (cam.value.isStreamingImages) await cam.stopImageStream();
       _newPhase();
-      await cam.startVideoRecording(onAvailable: _onFrame);
+      _liveChecks = true;
+      try {
+        await cam.startVideoRecording(onAvailable: _onFrame);
+      } on CameraException catch (e) {
+        if (!config.allowRecordingWithoutLiveChecks) rethrow;
+        // Some devices cannot record and send frames at the same time.
+        debugPrint('movement_capture: recording with frames failed '
+            '(${e.code}); recording without live checks');
+        _liveChecks = false;
+        await cam.startVideoRecording();
+      }
       _capturedAtUtc = DateTime.now().toUtc();
       _recordClock
         ..reset()
         ..start();
-      _setState(Recording(elapsed: Duration.zero, total: config.maxDuration));
+      _setState(Recording(
+        elapsed: Duration.zero,
+        total: config.maxDuration,
+        liveChecks: _liveChecks,
+      ));
       _maxDurationTimer =
           Timer(config.maxDuration, () => unawaited(_finishRecording()));
       _ticker = Timer.periodic(const Duration(milliseconds: 250), (_) {
@@ -350,13 +368,16 @@ class MovementCaptureController extends ChangeNotifier {
         _setState(Recording(
           elapsed: e > config.maxDuration ? config.maxDuration : e,
           total: config.maxDuration,
+          liveChecks: _liveChecks,
         ));
       });
-      _armWatchdog();
+      if (_liveChecks) _armWatchdog();
     } on CameraException catch (e) {
       debugPrint('movement_capture: start recording failed ${e.code}');
       _busyTransition = false;
-      await _fail(CameraFailure.other);
+      await _fail(config.allowRecordingWithoutLiveChecks
+          ? CameraFailure.other
+          : CameraFailure.streamUnsupported);
       return;
     } finally {
       _busyTransition = false;
@@ -418,6 +439,7 @@ class MovementCaptureController extends ChangeNotifier {
     final cancellation = UploadCancellation();
     _uploadCancellation = cancellation;
     _setState(const Uploading(0));
+    final kind = _selected?.kind ?? CameraKind.external;
     try {
       final id = await _uploader.upload(
         MovementClip(
@@ -426,6 +448,10 @@ class MovementCaptureController extends ChangeNotifier {
           resolution: config.resolution,
           capturedAtUtc: _capturedAtUtc ?? DateTime.now().toUtc(),
           metadata: Map.unmodifiable(config.metadata),
+          platform: _isIOS ? 'ios' : 'android',
+          cameraKind: kind.name,
+          fileMirrored: _isIOS && kind == CameraKind.front,
+          liveChecks: _liveChecks,
         ),
         onProgress: (p) {
           if (cancellation.isCancelled || _state is! Uploading) return;
@@ -492,7 +518,7 @@ class MovementCaptureController extends ChangeNotifier {
         }
       case CountingDown():
         if (r.confirmedBad) _cancelCountdown(r.lastIssue!);
-      case Recording():
+      case Recording(liveChecks: true):
         if (r.confirmedBad) unawaited(_abortRecording(r.lastIssue!));
       default:
         break;
@@ -508,17 +534,28 @@ class MovementCaptureController extends ChangeNotifier {
     unawaited(_fail(CameraFailure.other)); // e.g. webcam unplugged
   }
 
-  /// If no frame arrives within 3 s of a phase starting, frames are not
-  /// available in this mode (see lab check V2).
+  /// No frame within 3 s of a phase starting: during recording, continue
+  /// without live checks (if allowed); otherwise the camera can't be checked.
   void _armWatchdog() {
     _frameWatchdog?.cancel();
     final epoch = _epoch;
     _frameWatchdog = Timer(const Duration(seconds: 3), () {
-      if (epoch == _epoch && !_frameSeenThisPhase && !_disposed) {
-        debugPrint(
-            'movement_capture: no frames for 3 s in ${_state.runtimeType}');
-        unawaited(_fail(CameraFailure.streamUnsupported));
+      if (epoch != _epoch || _frameSeenThisPhase || _disposed) return;
+      final s = _state;
+      if (s is Recording && config.allowRecordingWithoutLiveChecks) {
+        debugPrint('movement_capture: no frames while recording; '
+            'continuing without live checks');
+        _liveChecks = false;
+        _setState(Recording(
+          elapsed: s.elapsed,
+          total: s.total,
+          liveChecks: false,
+        ));
+        return;
       }
+      debugPrint(
+          'movement_capture: no frames for 3 s in ${_state.runtimeType}');
+      unawaited(_fail(CameraFailure.streamUnsupported));
     });
   }
 

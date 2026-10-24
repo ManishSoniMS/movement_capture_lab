@@ -34,9 +34,17 @@ final class CountingDown extends CaptureState {
 }
 
 final class Recording extends CaptureState {
-  const Recording({required this.elapsed, required this.total});
+  const Recording({
+    required this.elapsed,
+    required this.total,
+    this.liveChecks = true,
+  });
   final Duration elapsed;
   final Duration total;
+
+  /// False when this device cannot send frames while recording, so the
+  /// recording runs without quality checks.
+  final bool liveChecks;
 
   double get progress {
     if (total.inMilliseconds == 0) return 0;

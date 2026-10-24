@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -45,10 +46,11 @@ class _MovementCaptureScreenState extends State<MovementCaptureScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    SystemChrome.setPreferredOrientations(const [
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
+    final view = WidgetsBinding.instance.platformDispatcher.views.first;
+    final shortestSide =
+        (view.physicalSize / view.devicePixelRatio).shortestSide;
+    SystemChrome.setPreferredOrientations(
+        widget.config.orientationsFor(shortestSide));
     _controller = MovementCaptureController(
       config: widget.config,
       uploader: widget.uploader,
@@ -231,15 +233,9 @@ class _CaptureBody extends StatelessWidget {
   final bool showDebug;
   final void Function([String? analysisId]) onClose;
 
-  bool _mirror(CameraChoice? c) {
-    final config = controller.config;
-    return switch (c?.kind) {
-      CameraKind.external => config.mirrorExternalPreview,
-      CameraKind.front => config.mirrorFrontPreview,
-      CameraKind.back => config.mirrorBackPreview,
-      null => false,
-    };
-  }
+  bool _mirror(CameraChoice? c) => c == null
+      ? false
+      : controller.config.mirrorPreviewFor(c.kind, defaultTargetPlatform);
 
   @override
   Widget build(BuildContext context) {
@@ -289,28 +285,43 @@ class _CaptureBody extends StatelessWidget {
           ),
         ),
         Positioned(
-          top: 24,
-          left: 24,
-          right: showDebug ? 320 : 24,
-          child: _TopBanner(
-            state: state,
-            ui: ui,
-            showFallbackNotice: controller.usingTabletFallback,
+          top: 16,
+          left: 16,
+          right: 16,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final banner = _TopBanner(
+                state: state,
+                ui: ui,
+                showFallbackNotice: controller.usingTabletFallback,
+              );
+              if (!showDebug) return banner;
+              final debug = DebugMetricsPanel(metrics: controller.metrics);
+              if (constraints.maxWidth <
+                  MovementCaptureConfig.tabletShortestSide) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [banner, const SizedBox(height: 12), debug],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: banner),
+                  const SizedBox(width: 16),
+                  SizedBox(width: 280, child: debug),
+                ],
+              );
+            },
           ),
         ),
-        if (showDebug)
-          Positioned(
-            top: 24,
-            right: 24,
-            width: 280,
-            child: DebugMetricsPanel(metrics: controller.metrics),
-          ),
         if (state case CountingDown(:final secondsLeft))
           Center(child: _CountdownNumber(seconds: secondsLeft)),
         Positioned(
-          left: 24,
-          right: 24,
-          bottom: 24,
+          left: 16,
+          right: 16,
+          bottom: 16,
           child: _BottomBar(
             controller: controller,
             state: state,
@@ -474,6 +485,19 @@ class _TopBanner extends StatelessWidget {
                 minHeight: 10,
                 color: ui.active,
               ),
+              if (!r.liveChecks) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Icon(ui.icons.info, size: 28),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(s.noLiveChecksNotice,
+                          style: theme.textTheme.titleMedium),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         );
@@ -539,8 +563,6 @@ class _BottomBar extends StatelessWidget {
   final VoidCallback onCancel;
   final VoidCallback onChooseCamera;
 
-  static const _minSize = Size(200, 56);
-
   @override
   Widget build(BuildContext context) {
     final showCancel =
@@ -552,39 +574,66 @@ class _BottomBar extends StatelessWidget {
       _ => false,
     };
     final selected = controller.selectedCamera;
-    final showCameraButton = controller.canChangeCamera && selected != null;
+    const tall = Size(0, 56);
 
-    return Row(
-      children: [
-        OutlinedButton(
-          style: OutlinedButton.styleFrom(minimumSize: _minSize),
-          onPressed: onCancel,
-          child: Text(ui.strings.cancel),
-        ),
-        if (showCameraButton) ...[
-          const SizedBox(width: 16),
-          Flexible(
-            child: OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(minimumSize: const Size(56, 56)),
-              onPressed: onChooseCamera,
-              icon: Icon(ui.icons.switchCamera),
-              label: Text(
-                ui.strings.cameraLabel(selected),
-                overflow: TextOverflow.ellipsis,
-              ),
+    final cancel = OutlinedButton(
+      style: OutlinedButton.styleFrom(minimumSize: tall),
+      onPressed: onCancel,
+      child: Text(ui.strings.cancel),
+    );
+    // `selected != null` inside the condition lets Dart treat it as non-null.
+    final cameraButton = controller.canChangeCamera && selected != null
+        ? OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(minimumSize: tall),
+            onPressed: onChooseCamera,
+            icon: Icon(ui.icons.switchCamera),
+            label: Text(
+              ui.strings.cameraLabel(selected),
+              overflow: TextOverflow.ellipsis,
             ),
-          ),
-        ],
-        const Spacer(),
-        if (showStart)
-          FilledButton.icon(
-            style: FilledButton.styleFrom(minimumSize: _minSize),
+          )
+        : null;
+    final start = showStart
+        ? FilledButton.icon(
+            style: FilledButton.styleFrom(minimumSize: tall),
             onPressed: onStart,
             icon: Icon(ui.icons.startRecording),
             label: Text(ui.strings.startRecording),
-          ),
-      ],
-    );
+          )
+        : null;
+
+    return LayoutBuilder(builder: (context, constraints) {
+      if (constraints.maxWidth < MovementCaptureConfig.tabletShortestSide) {
+        // Phones: Start full width on top, the other two below.
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (start != null) ...[start, const SizedBox(height: 12)],
+            Row(
+              children: [
+                Expanded(child: cancel),
+                if (cameraButton != null) ...[
+                  const SizedBox(width: 12),
+                  Expanded(child: cameraButton),
+                ],
+              ],
+            ),
+          ],
+        );
+      }
+      return Row(
+        children: [
+          SizedBox(width: 200, child: cancel),
+          if (cameraButton != null) ...[
+            const SizedBox(width: 16),
+            Flexible(child: cameraButton),
+          ],
+          const Spacer(),
+          if (start != null) SizedBox(width: 240, child: start),
+        ],
+      );
+    });
   }
 }
 

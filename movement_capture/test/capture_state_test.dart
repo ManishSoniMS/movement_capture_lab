@@ -25,4 +25,12 @@ void main() {
       0,
     );
   });
+
+  test('Recording.liveChecks defaults to true', () {
+    expect(
+      const Recording(elapsed: Duration.zero, total: Duration(seconds: 5))
+          .liveChecks,
+      isTrue,
+    );
+  });
 }

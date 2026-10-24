@@ -29,6 +29,13 @@ dependencies:
 Host apps must also add `camera_android` to their own pubspec.yaml; otherwise
 Android falls back to CameraX, which may not list USB cameras.
 
+**iOS:** add `NSCameraUsageDescription` to `Info.plist` and set the iOS
+deployment target to 15.5. For USB webcams on iPad, the host app must also
+override `camera_avfoundation` with the patched copy in
+`third_party/camera_avfoundation` (see `PATCHES.md`), using
+`dependency_overrides` in the host's own `pubspec.yaml`. Without the override,
+iPads use only their built-in cameras.
+
 Requirements: `minSdkVersion` >= 24. The host must grant CAMERA (via MDM on
 kiosks). No microphone permission is needed. The host must check video
 consent **before** calling `open`.
@@ -67,6 +74,11 @@ Return a non-empty analysis id; throw on failure (the package shows Retry).
 Retry policy (attempts, backoff) is the uploader's job. Stop when
 `cancellation` fires. The package deletes the clip file after success.
 
+`MovementClip` also carries `platform` (`android`/`ios`), `cameraKind`
+(`external`/`front`/`back`), `fileMirrored` (true only for the iOS front
+camera) and `liveChecks` (false when the recording ran without quality
+checks). `clip.deviceFields` gives them as multipart strings.
+
 ## MovementCaptureConfig fields (defaults)
 
 | Field | Default |
@@ -79,7 +91,9 @@ Retry policy (attempts, backoff) is the uploader's job. Stop when
 | resolution | ResolutionPreset.high |
 | preferredCameraId | null |
 | cameraRotationDegrees | 0 (USB camera only; tablet cameras derive it) |
-| mirrorExternalPreview / mirrorFrontPreview / mirrorBackPreview | true / true / false |
+| mirrorExternalPreview / mirrorFrontPreview / mirrorBackPreview | null (platform default: USB on; front on for Android, off for iOS; back off) |
+| orientation | auto (tablets landscape, phones portrait) |
+| allowRecordingWithoutLiveChecks | true |
 | safeZoneInset | 0.075 |
 | minLandmarkLikelihood | 0.5 |
 | minMeanLuma / maxMeanLuma | 60 / 200 |

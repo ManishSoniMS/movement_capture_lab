@@ -57,6 +57,8 @@ class InspectionUploader implements MovementUploader {
   }) async {
     final dir = await directory();
     final name = 'clip_${clip.capturedAtUtc.millisecondsSinceEpoch}'
+        '_${clip.platform}_${clip.cameraKind}'
+        '_mirrored-${clip.fileMirrored}_checks-${clip.liveChecks}'
         '_${clip.duration.inMilliseconds}ms.mp4';
     onProgress(0.3);
     await clip.file.copy('${dir.path}/$name');
@@ -72,7 +74,10 @@ class InspectionUploader implements MovementUploader {
 /// Contract:
 ///   POST <endpointUrl>  multipart/form-data
 ///   fields: video (video/mp4), durationMs, resolutionPreset, capturedAt
-///           (ISO-8601 UTC), plus every metadata entry (e.g. chatSessionId)
+///           (ISO-8601 UTC), platform ("android"|"ios"),
+///           cameraKind ("external"|"front"|"back"), fileMirrored and
+///           liveChecks ("true"|"false"), plus every metadata entry
+///           (e.g. chatSessionId)
 ///   200/201 → {"analysisId": "mv_01JB7Q2K9X4T3R8N5C6D"}
 class HttpUploader implements MovementUploader {
   HttpUploader({required this.endpointUrl, this.bearerToken});
@@ -104,6 +109,7 @@ class HttpUploader implements MovementUploader {
           'resolutionPreset': clip.resolution.name,
           'capturedAt': clip.capturedAtUtc.toIso8601String(),
           ...clip.metadata,
+          ...clip.deviceFields,
         });
 
         final response = await _dio.post<Map<String, dynamic>>(

@@ -26,14 +26,13 @@ class MovementCaptureStrings {
     this.recordingTemplate = 'Recording {elapsed} of {total} seconds',
     this.starting = 'Starting camera…',
     this.needsOperator =
-        'Recording keeps stopping. Operator: please help the patient into position, then tap Try again.',
+        'Recording keeps stopping. Please check the position and the light, then tap Try again.',
     this.uploadingTemplate = 'Sending video… {percent}%',
     this.uploadFailed = 'Could not send the video. Tap Retry.',
     this.completed = 'Video sent for analysis.',
-    this.cameraNone =
-        'No camera found. Check the USB cable, then tap Retry.',
+    this.cameraNone = 'No camera found. Check the USB cable, then tap Retry.',
     this.cameraPermissionDenied =
-        'Camera permission is off. Ask the administrator to allow camera access.',
+        'Camera access is off. Allow camera access for this app in Settings, then tap Retry.',
     this.cameraStreamUnsupported =
         'This camera cannot check the video while recording. Choose another camera.',
     this.cameraOther =
@@ -55,6 +54,8 @@ class MovementCaptureStrings {
     this.noUsbCameraNotice = 'No USB camera found. Using the tablet camera.',
     this.refreshCameras = 'Refresh list',
     this.useAnotherCamera = 'Use another camera',
+    this.noLiveChecksNotice =
+        'This device cannot check the video while recording. Please stay inside the box until recording ends.',
   });
 
   final String issueMultiplePeople;
@@ -94,6 +95,7 @@ class MovementCaptureStrings {
   final String noUsbCameraNotice;
   final String refreshCameras;
   final String useAnotherCamera;
+  final String noLiveChecksNotice;
 
   String issue(CaptureIssue i) => switch (i) {
         CaptureIssue.multiplePeople => issueMultiplePeople,

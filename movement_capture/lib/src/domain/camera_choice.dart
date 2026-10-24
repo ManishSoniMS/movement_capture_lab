@@ -73,15 +73,18 @@ CameraChoice? pickDefaultCamera(
 }
 
 /// Rotation handed to ML Kit. A USB camera does not rotate with the tablet, so
-/// it uses the fixed [configRotation]. Tablet cameras use the standard ML Kit
-/// rule from sensor orientation and the current screen rotation.
+/// it uses the fixed [configRotation]. Built-in cameras on iOS use the sensor
+/// orientation; on Android, the standard ML Kit rule from sensor orientation
+/// and the current screen rotation.
 int analysisRotationDegrees({
   required CameraKind kind,
   required int sensorOrientation,
   required int screenDegrees,
   required int configRotation,
+  bool isIOS = false,
 }) {
   if (kind == CameraKind.external) return configRotation;
+  if (isIOS) return sensorOrientation; // as in Google's ML Kit sample
   return kind == CameraKind.front
       ? (sensorOrientation + screenDegrees) % 360
       : (sensorOrientation - screenDegrees + 360) % 360;

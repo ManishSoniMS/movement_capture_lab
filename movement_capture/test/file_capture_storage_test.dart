@@ -7,10 +7,16 @@ import 'package:movement_capture/src/domain/capture_storage.dart';
 void main() {
   late Directory root;
   late CaptureStorage storage;
+  late Directory pluginVideos;
 
   setUp(() async {
     root = await Directory.systemTemp.createTemp('mc_storage_test');
-    storage = FileCaptureStorage(cacheDir: () async => root);
+    pluginVideos = Directory('${root.path}/plugin/camera/videos')
+      ..createSync(recursive: true);
+    storage = FileCaptureStorage(
+      cacheDir: () async => root,
+      pluginVideosDir: () async => pluginVideos,
+    );
   });
 
   tearDown(() async {
@@ -38,5 +44,20 @@ void main() {
 
   test('deletePath ignores a missing file', () async {
     await storage.deletePath('${root.path}/missing.mp4');
+  });
+
+  test('purgeAll removes mp4 files left in the plugin recording folder',
+      () async {
+    final stray = File('${pluginVideos.path}/REC_1.mp4')
+      ..writeAsStringSync('x');
+    final keep = File('${pluginVideos.path}/note.txt')..writeAsStringSync('k');
+    await storage.purgeAll();
+    expect(stray.existsSync(), isFalse);
+    expect(keep.existsSync(), isTrue);
+  });
+
+  test('purgeAll copes with a missing plugin recording folder', () async {
+    await pluginVideos.delete(recursive: true);
+    await storage.purgeAll();
   });
 }

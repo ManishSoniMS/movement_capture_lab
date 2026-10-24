@@ -82,6 +82,25 @@ class _HomePageState extends State<HomePage> {
   String _int(double v) => v.round().toString();
   String _dec(double v) => v.toStringAsFixed(2);
 
+  Widget _triState(String label, bool? value, void Function(bool?) apply) {
+    return ListTile(
+      title: Text(label),
+      trailing: DropdownButton<int>(
+        value: value == null ? 0 : (value ? 1 : 2),
+        items: const [
+          DropdownMenuItem(value: 0, child: Text('Auto')),
+          DropdownMenuItem(value: 1, child: Text('On')),
+          DropdownMenuItem(value: 2, child: Text('Off')),
+        ],
+        onChanged: (i) => setState(() => apply(switch (i) {
+              1 => true,
+              2 => false,
+              _ => null,
+            })),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -139,20 +158,28 @@ class _HomePageState extends State<HomePage> {
                   setState(() => _s.resolution = v ?? ResolutionPreset.high),
             ),
           ),
-          SwitchListTile(
-            title: const Text('Mirror USB camera preview'),
-            value: _s.mirrorExternal,
-            onChanged: (v) => setState(() => _s.mirrorExternal = v),
+          _triState('Mirror USB camera preview', _s.mirrorExternal,
+              (v) => _s.mirrorExternal = v),
+          _triState('Mirror front camera preview', _s.mirrorFront,
+              (v) => _s.mirrorFront = v),
+          _triState('Mirror back camera preview', _s.mirrorBack,
+              (v) => _s.mirrorBack = v),
+          ListTile(
+            title: const Text('Orientation'),
+            trailing: DropdownButton<CaptureOrientation>(
+              value: _s.orientation,
+              items: CaptureOrientation.values
+                  .map((o) => DropdownMenuItem(value: o, child: Text(o.name)))
+                  .toList(),
+              onChanged: (v) =>
+                  setState(() => _s.orientation = v ?? CaptureOrientation.auto),
+            ),
           ),
           SwitchListTile(
-            title: const Text('Mirror tablet front camera preview'),
-            value: _s.mirrorFront,
-            onChanged: (v) => setState(() => _s.mirrorFront = v),
-          ),
-          SwitchListTile(
-            title: const Text('Mirror tablet back camera preview'),
-            value: _s.mirrorBack,
-            onChanged: (v) => setState(() => _s.mirrorBack = v),
+            title: const Text(
+                'Record without live checks if the device cannot stream'),
+            value: _s.allowNoLiveChecks,
+            onChanged: (v) => setState(() => _s.allowNoLiveChecks = v),
           ),
           ListTile(
             title: const Text('Last chosen camera'),

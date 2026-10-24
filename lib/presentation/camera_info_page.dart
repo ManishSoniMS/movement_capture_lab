@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:camera_platform_interface/camera_platform_interface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -38,6 +40,13 @@ class _Report {
     if (pluginExternal.isNotEmpty) {
       return 'OK: the app can see the USB camera '
           '(id ${pluginExternal.map((c) => c.name).join(', ')}).';
+    }
+    if (Platform.isIOS) {
+      return 'No USB camera listed. On iOS, USB cameras work only on iPads '
+          'with USB-C running iPadOS 17 or later, and only when the app uses '
+          'the patched camera_avfoundation (dependency_overrides in '
+          'pubspec.yaml). iPhones never list USB cameras. The built-in '
+          'cameras above will be used.';
     }
     if (androidExternal.isNotEmpty) {
       final numeric = androidExternal.where((c) => c['numericId'] == true);
@@ -85,29 +94,33 @@ class _CameraInfoPageState extends State<CameraInfoPage> {
     } catch (e) {
       errors.add('plugin: $e');
     }
-    try {
-      final raw = await _channel.invokeListMethod<Object?>('camera2Cameras');
-      camera2 = [
-        for (final m in raw ?? const [])
-          Map<String, Object?>.from(m! as Map<Object?, Object?>),
-      ];
-    } catch (e) {
-      errors.add('camera2: $e');
-    }
-    try {
-      final raw = await _channel.invokeListMethod<Object?>('usbVideoDevices');
-      usb = [
-        for (final m in raw ?? const [])
-          Map<String, Object?>.from(m! as Map<Object?, Object?>),
-      ];
-    } catch (e) {
-      errors.add('usb: $e');
-    }
-    try {
-      feature =
-          await _channel.invokeMethod<bool>('hasExternalCameraFeature') ?? false;
-    } catch (e) {
-      errors.add('feature: $e');
+    // The native diagnostics channel exists only on Android.
+    if (Platform.isAndroid) {
+      try {
+        final raw = await _channel.invokeListMethod<Object?>('camera2Cameras');
+        camera2 = [
+          for (final m in raw ?? const [])
+            Map<String, Object?>.from(m! as Map<Object?, Object?>),
+        ];
+      } catch (e) {
+        errors.add('camera2: $e');
+      }
+      try {
+        final raw = await _channel.invokeListMethod<Object?>('usbVideoDevices');
+        usb = [
+          for (final m in raw ?? const [])
+            Map<String, Object?>.from(m! as Map<Object?, Object?>),
+        ];
+      } catch (e) {
+        errors.add('usb: $e');
+      }
+      try {
+        feature =
+            await _channel.invokeMethod<bool>('hasExternalCameraFeature') ??
+                false;
+      } catch (e) {
+        errors.add('feature: $e');
+      }
     }
 
     return _Report(
@@ -127,17 +140,20 @@ class _CameraInfoPageState extends State<CameraInfoPage> {
       ..writeln('Device declares camera.external: ${r.externalFeature}')
       ..writeln('Flutter plugin cameras:');
     for (final c in r.plugin) {
-      b.writeln('  id ${c.name} · ${c.lensDirection.name} · ${c.sensorOrientation}°');
+      b.writeln(
+          '  id ${c.name} · ${c.lensDirection.name} · ${c.sensorOrientation}°');
     }
     b.writeln('Android Camera2 cameras:');
     for (final c in r.camera2) {
-      b.writeln('  id ${c['id']} · ${c['facing']} · numericId=${c['numericId']} '
+      b.writeln(
+          '  id ${c['id']} · ${c['facing']} · numericId=${c['numericId']} '
           '· backwardCompatible=${c['backwardCompatible']} '
           '· level=${c['hardwareLevel']} · ${c['sensorOrientation']}°');
     }
     b.writeln('USB video devices:');
     for (final d in r.usb) {
-      b.writeln('  ${d['name']} · vendor ${d['vendorId']} · product ${d['productId']}');
+      b.writeln(
+          '  ${d['name']} · vendor ${d['vendorId']} · product ${d['productId']}');
     }
     if (r.error != null) b.writeln('Errors:\n${r.error}');
     return b.toString();
@@ -210,11 +226,13 @@ class _CameraInfoPageState extends State<CameraInfoPage> {
                 ListTile(
                   leading: const Icon(Icons.cable),
                   title: Text('${d['name']}'),
-                  subtitle: Text('vendor ${d['vendorId']} · product ${d['productId']}'),
+                  subtitle: Text(
+                      'vendor ${d['vendorId']} · product ${d['productId']}'),
                 ),
               if (r.error != null) ...[
                 const _Heading('Errors'),
-                Text(r.error!, style: TextStyle(color: theme.colorScheme.error)),
+                Text(r.error!,
+                    style: TextStyle(color: theme.colorScheme.error)),
               ],
               const SizedBox(height: 16),
               FilledButton.icon(

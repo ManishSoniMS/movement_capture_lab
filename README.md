@@ -1,17 +1,16 @@
 # Movement Capture Lab
 
-A new Flutter project.
+Test harness for the `movement_capture` package. Android 7+ (API 24) and iOS 15.5+.
 
-## Getting Started
+## Getting clips off a device
 
-This project is a starting point for a Flutter application.
+- Android: `adb pull` from the app's external files `inspection/` folder.
+- iPad/iPhone: Xcode, Window, Devices and Simulators, select the lab app,
+  Download Container, then `AppData/Documents/inspection`.
 
-A few resources to get you started if this is your first Flutter project:
+Inspection file names show platform, camera kind, mirroring and live-check state.
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+## iOS USB cameras
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+`third_party/camera_avfoundation` is a patched copy of the iOS camera plugin
+(see its `PATCHES.md`), applied through `dependency_overrides` in `pubspec.yaml`.

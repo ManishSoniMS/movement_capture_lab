@@ -1,6 +1,10 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/services.dart';
 
+import 'camera_choice.dart';
+
+enum CaptureOrientation { auto, landscape, portrait }
+
 class MovementCaptureConfig {
   MovementCaptureConfig({
     Duration maxDuration = const Duration(seconds: 30),
@@ -11,9 +15,11 @@ class MovementCaptureConfig {
     this.resolution = ResolutionPreset.high,
     this.preferredCameraId,
     this.cameraRotationDegrees = 0,
-    this.mirrorExternalPreview = true,
-    this.mirrorFrontPreview = true,
-    this.mirrorBackPreview = false,
+    this.mirrorExternalPreview,
+    this.mirrorFrontPreview,
+    this.mirrorBackPreview,
+    this.orientation = CaptureOrientation.auto,
+    this.allowRecordingWithoutLiveChecks = true,
     this.safeZoneInset = 0.075,
     this.minLandmarkLikelihood = 0.5,
     this.minMeanLuma = 60,
@@ -32,6 +38,10 @@ class MovementCaptureConfig {
   static const Duration minAllowedDuration = Duration(seconds: 5);
   static const Duration maxAllowedDuration = Duration(seconds: 30);
 
+  /// Screens whose shorter side is at least this (logical pixels) count as
+  /// tablets for [CaptureOrientation.auto] and for the wide layout.
+  static const double tabletShortestSide = 600;
+
   final Duration maxDuration;
   final Duration countdown;
   final Duration stableBeforeStart;
@@ -45,13 +55,20 @@ class MovementCaptureConfig {
 
   /// Rotation of the USB camera image relative to upright, for the quality
   /// checks only. Fixed per installation: the webcam does not rotate with the
-  /// tablet. Tablet cameras ignore this and use their sensor orientation.
+  /// tablet. Built-in cameras ignore this.
   final int cameraRotationDegrees;
 
-  /// Display-only mirroring per camera type. Recorded files are never mirrored.
-  final bool mirrorExternalPreview;
-  final bool mirrorFrontPreview;
-  final bool mirrorBackPreview;
+  /// Display-only preview mirroring per camera type. null = platform default
+  /// (see [mirrorPreviewFor]). Recorded files are never changed.
+  final bool? mirrorExternalPreview;
+  final bool? mirrorFrontPreview;
+  final bool? mirrorBackPreview;
+
+  final CaptureOrientation orientation;
+
+  /// When a device cannot send frames during recording: true = record without
+  /// checks and report liveChecks=false; false = show the error instead.
+  final bool allowRecordingWithoutLiveChecks;
 
   /// Fraction of width/height kept clear at each edge (wide-lens distortion).
   final double safeZoneInset;
@@ -67,6 +84,30 @@ class MovementCaptureConfig {
 
   /// Orientations to restore when the screen closes. Empty = system default.
   final List<DeviceOrientation> restoreOrientations;
+
+  /// iOS's camera plugin already mirrors the front camera (preview and file),
+  /// so mirroring it again would flip it back.
+  bool mirrorPreviewFor(CameraKind kind, TargetPlatform platform) =>
+      switch (kind) {
+        CameraKind.external => mirrorExternalPreview ?? true,
+        CameraKind.front =>
+          mirrorFrontPreview ?? (platform != TargetPlatform.iOS),
+        CameraKind.back => mirrorBackPreview ?? false,
+      };
+
+  List<DeviceOrientation> orientationsFor(double shortestSide) {
+    const landscape = [
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ];
+    const portrait = [DeviceOrientation.portraitUp];
+    return switch (orientation) {
+      CaptureOrientation.landscape => landscape,
+      CaptureOrientation.portrait => portrait,
+      CaptureOrientation.auto =>
+        shortestSide >= tabletShortestSide ? landscape : portrait,
+    };
+  }
 
   static Duration _clampDuration(Duration d) {
     if (d < minAllowedDuration) return minAllowedDuration;

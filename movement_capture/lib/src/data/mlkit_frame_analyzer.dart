@@ -71,13 +71,7 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
     try {
       final rotation = _normalise(_rotationDegrees());
       final input = _toInputImage(image, rotation); // validates, copies bytes
-      final plane = image.planes.first;
-      final luma = LumaStats.fromLumaPlane(
-        plane.bytes,
-        width: image.width,
-        height: image.height,
-        bytesPerRow: plane.bytesPerRow,
-      );
+      final luma = _luma(image);
 
       final (poses, faces) =
           await (_pose.processImage(input), _faces.processImage(input)).wait;
@@ -127,10 +121,13 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
 
   InputImage _toInputImage(CameraImage image, int rotationDegrees) {
     final format = InputImageFormatValue.fromRawValue(image.format.raw);
-    if (format != InputImageFormat.nv21 || image.planes.length != 1) {
+    final supported = image.planes.length == 1 &&
+        (format == InputImageFormat.nv21 ||
+            format == InputImageFormat.bgra8888);
+    if (!supported) {
       throw UnsupportedFrameFormat(
-        'expected single-plane NV21, got ${image.format.raw} '
-        'with ${image.planes.length} planes',
+        'expected single-plane NV21 (Android) or BGRA8888 (iOS), got '
+        '${image.format.raw} with ${image.planes.length} planes',
       );
     }
     final rotation = InputImageRotationValue.fromRawValue(rotationDegrees) ??
@@ -145,6 +142,21 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
         bytesPerRow: plane.bytesPerRow,
       ),
     );
+  }
+
+  LumaStats _luma(CameraImage image) {
+    final plane = image.planes.first;
+    final isBgra = InputImageFormatValue.fromRawValue(image.format.raw) ==
+        InputImageFormat.bgra8888;
+    return isBgra
+        ? LumaStats.fromBgra(plane.bytes,
+            width: image.width,
+            height: image.height,
+            bytesPerRow: plane.bytesPerRow)
+        : LumaStats.fromLumaPlane(plane.bytes,
+            width: image.width,
+            height: image.height,
+            bytesPerRow: plane.bytesPerRow);
   }
 
   /// ML Kit returns coordinates in the upright (rotated) image.

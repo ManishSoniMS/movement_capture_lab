@@ -12,6 +12,10 @@ class MovementClip {
     required this.resolution,
     required this.capturedAtUtc,
     required this.metadata,
+    required this.platform,
+    required this.cameraKind,
+    required this.fileMirrored,
+    required this.liveChecks,
   });
 
   final File file;
@@ -21,6 +25,26 @@ class MovementClip {
 
   /// Copied from MovementCaptureConfig.metadata (e.g. chatSessionId).
   final Map<String, String> metadata;
+
+  /// "android" or "ios".
+  final String platform;
+
+  /// "external", "front" or "back".
+  final String cameraKind;
+
+  /// True when the video file itself is mirrored (iOS front camera).
+  final bool fileMirrored;
+
+  /// False when the recording ran without live quality checks.
+  final bool liveChecks;
+
+  /// The four fields above as strings, ready for a multipart form.
+  Map<String, String> get deviceFields => {
+        'platform': platform,
+        'cameraKind': cameraKind,
+        'fileMirrored': '$fileMirrored',
+        'liveChecks': '$liveChecks',
+      };
 }
 
 /// Fired when the screen closes during an upload.

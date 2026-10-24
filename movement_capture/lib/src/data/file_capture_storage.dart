@@ -7,11 +7,20 @@ import '../domain/capture_storage.dart';
 /// Stores captures under `<cache>/movement_capture/`.
 class FileCaptureStorage implements CaptureStorage {
   /// [cacheDir] defaults to the platform temporary directory; tests override it.
-  const FileCaptureStorage(
-      {Future<Directory> Function() cacheDir = getTemporaryDirectory})
-      : _cacheDir = cacheDir;
+  const FileCaptureStorage({
+    Future<Directory> Function() cacheDir = getTemporaryDirectory,
+    Future<Directory> Function() pluginVideosDir = _iosPluginVideosDir,
+  })  : _cacheDir = cacheDir,
+        _pluginVideosDir = pluginVideosDir;
 
   final Future<Directory> Function() _cacheDir;
+  final Future<Directory> Function() _pluginVideosDir;
+
+  /// The iOS camera plugin records into `<app tmp>/camera/videos`, which is a
+  /// different folder from path_provider's temporary directory on iOS.
+  static Future<Directory> _iosPluginVideosDir() async =>
+      Directory('${Directory.systemTemp.path}${Platform.pathSeparator}camera'
+          '${Platform.pathSeparator}videos');
 
   static const String _folder = 'movement_capture';
 
@@ -53,13 +62,19 @@ class FileCaptureStorage implements CaptureStorage {
       final tmp = await _cacheDir();
       final dir = Directory('${tmp.path}${Platform.pathSeparator}$_folder');
       if (await dir.exists()) await dir.delete(recursive: true);
-      await for (final entity in tmp.list(followLinks: false)) {
-        if (entity is File && entity.path.toLowerCase().endsWith('.mp4')) {
-          await deletePath(entity.path);
-        }
-      }
+      await _deleteMp4sIn(tmp);
+      await _deleteMp4sIn(await _pluginVideosDir());
     } on FileSystemException {
       // Best effort; the next call retries.
+    }
+  }
+
+  Future<void> _deleteMp4sIn(Directory dir) async {
+    if (!await dir.exists()) return;
+    await for (final entity in dir.list(followLinks: false)) {
+      if (entity is File && entity.path.toLowerCase().endsWith('.mp4')) {
+        await deletePath(entity.path);
+      }
     }
   }
 }
