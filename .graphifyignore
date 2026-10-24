@@ -1,0 +1,8 @@
+ios/
+android/
+build/
+.dart_tool/
+.idea/
+CLAUDE.md
+**/CLAUDE.md
+README.md
