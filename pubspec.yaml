@@ -1,0 +1,23 @@
+name: movement_capture_lab
+description: Test harness for the movement_capture package.
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  movement_capture:
+    path: movement_capture
+  dio: ^5.11.1
+  path_provider: ^2.1.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

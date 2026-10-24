@@ -1,0 +1,76 @@
+# movement_capture
+
+Operator-assisted full-body video capture for kiosk tablets. The operator taps
+**Start recording**; the package checks the picture live (one person, whole
+body in view, lighting OK), counts down, records up to 30 s, uploads through
+a host-supplied uploader and returns an analysis id.
+
+## Host-agnostic rules
+
+The package must NOT:
+
+1. import Dio, Riverpod, GoRouter or any host code. The host passes a `MovementUploader`.
+2. contain user text the host cannot replace. The host passes `MovementCaptureStrings` (English defaults built in).
+3. hardcode colours or icons. It inherits the host `Theme`; pass `MovementCaptureStyle` / `MovementCaptureIcons` to override.
+4. persist anything. It only uses `<cache>/movement_capture/` and exposes `MovementCapture.purgeAll()`.
+5. decide consent, login or navigation. `open` returns `String? analysisId`; the host decides what happens next.
+
+## Install
+
+```yaml
+dependencies:
+  movement_capture:
+    git:
+      url: <private repo URL>
+      path: packages/movement_capture
+      ref: movement_capture-v0.1.0
+```
+
+Requirements: `minSdkVersion` >= 24. The host must grant CAMERA (via MDM on
+kiosks). No microphone permission is needed. The host must check video
+consent **before** calling `open`.
+
+## Use
+
+```dart
+final analysisId = await MovementCapture.open(
+  context,
+  config: MovementCaptureConfig(metadata: {'chatSessionId': id}),
+  uploader: MyUploader(),
+);
+```
+
+Call `MovementCapture.purgeAll()` on logout and before login (never while a
+capture screen is open).
+
+## MovementUploader contract
+
+```dart
+Future<String> upload(MovementClip clip,
+    {required void Function(double progress) onProgress,
+     required UploadCancellation cancellation});
+```
+
+Return a non-empty analysis id; throw on failure (the package shows Retry).
+Retry policy (attempts, backoff) is the uploader's job. Stop when
+`cancellation` fires. The package deletes the clip file after success.
+
+## MovementCaptureConfig fields (defaults)
+
+| Field | Default |
+|---|---|
+| maxDuration | 30 s (clamped 5-30 s) |
+| countdown | 3 s |
+| stableBeforeStart | 1500 ms |
+| violationGrace | 400 ms |
+| maxRestarts | 3 |
+| resolution | ResolutionPreset.high |
+| cameraRotationDegrees | 0 |
+| safeZoneInset | 0.075 |
+| minLandmarkLikelihood | 0.5 |
+| minMeanLuma / maxMeanLuma | 60 / 200 |
+| maxClippedFraction | 0.25 |
+| minCenterToBorderLuma | 0.6 |
+| analysisInterval | 150 ms |
+| metadata | {} |
+| restoreOrientations | [] (system default) |

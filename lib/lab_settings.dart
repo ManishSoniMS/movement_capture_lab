@@ -1,0 +1,50 @@
+import 'package:movement_capture/movement_capture.dart';
+
+enum UploaderMode { mock, mockFail, inspection, http }
+
+/// In-memory settings for one lab session. Note the chosen values after
+/// on-site tuning; they become the kiosk app's defaults.
+class LabSettings {
+  double maxDurationS = 30;
+  double countdownS = 3;
+  double stableMs = 1500;
+  double graceMs = 400;
+  double maxRestarts = 3;
+  int rotation = 0;
+  ResolutionPreset resolution = ResolutionPreset.high;
+  double safeZoneInset = 0.075;
+  double minLikelihood = 0.5;
+  double minLuma = 60;
+  double maxLuma = 200;
+  double maxClipped = 0.25;
+  double minCenterToBorder = 0.6;
+  double analysisIntervalMs = 150;
+  UploaderMode uploaderMode = UploaderMode.mock;
+  bool debugOverlay = true;
+
+  MovementCaptureConfig toConfig() => MovementCaptureConfig(
+        maxDuration: Duration(seconds: maxDurationS.round()),
+        countdown: Duration(seconds: countdownS.round()),
+        stableBeforeStart: Duration(milliseconds: stableMs.round()),
+        violationGrace: Duration(milliseconds: graceMs.round()),
+        maxRestarts: maxRestarts.round(),
+        resolution: resolution,
+        cameraRotationDegrees: rotation,
+        safeZoneInset: safeZoneInset,
+        minLandmarkLikelihood: minLikelihood,
+        minMeanLuma: minLuma.round(),
+        maxMeanLuma: maxLuma.round(),
+        maxClippedFraction: maxClipped,
+        minCenterToBorderLuma: minCenterToBorder,
+        analysisInterval: Duration(milliseconds: analysisIntervalMs.round()),
+        metadata: {'chatSessionId': 'lab-${DateTime.now().millisecondsSinceEpoch}'},
+      );
+
+  /// One line to paste into the PR / tuning notes.
+  String summary() => 'duration=${maxDurationS.round()}s countdown=${countdownS.round()}s '
+      'stable=${stableMs.round()}ms grace=${graceMs.round()}ms restarts=${maxRestarts.round()} '
+      'rotation=$rotation res=${resolution.name} inset=${safeZoneInset.toStringAsFixed(3)} '
+      'likelihood=${minLikelihood.toStringAsFixed(2)} luma=${minLuma.round()}–${maxLuma.round()} '
+      'clipped=${maxClipped.toStringAsFixed(2)} centre/border=${minCenterToBorder.toStringAsFixed(2)} '
+      'interval=${analysisIntervalMs.round()}ms';
+}
