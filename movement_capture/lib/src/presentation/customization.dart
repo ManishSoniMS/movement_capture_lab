@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../domain/camera_choice.dart';
 import '../domain/capture_issue.dart';
 import '../domain/capture_state.dart';
 
 /// Every user-facing string. English defaults; the host passes translations.
-/// Templates use {elapsed}, {total} and {percent} placeholders.
+/// Templates use {elapsed}, {total}, {percent} and {n} placeholders.
 class MovementCaptureStrings {
   const MovementCaptureStrings({
     this.issueMultiplePeople =
@@ -29,12 +30,12 @@ class MovementCaptureStrings {
     this.uploadingTemplate = 'Sending video… {percent}%',
     this.uploadFailed = 'Could not send the video. Tap Retry.',
     this.completed = 'Video sent for analysis.',
-    this.cameraNotConnected =
-        'Webcam not found. Check the USB cable, then tap Retry.',
+    this.cameraNone =
+        'No camera found. Check the USB cable, then tap Retry.',
     this.cameraPermissionDenied =
         'Camera permission is off. Ask the administrator to allow camera access.',
     this.cameraStreamUnsupported =
-        'This camera cannot check the video while recording. Contact support.',
+        'This camera cannot check the video while recording. Choose another camera.',
     this.cameraOther =
         'The camera stopped working. Check the USB cable, then tap Retry.',
     this.startRecording = 'Start recording',
@@ -42,6 +43,18 @@ class MovementCaptureStrings {
     this.tryAgain = 'Try again',
     this.retry = 'Retry',
     this.done = 'Done',
+    this.cameraExternalSingle = 'USB camera',
+    this.cameraExternalTemplate = 'USB camera {n}',
+    this.cameraFrontSingle = 'Tablet front camera',
+    this.cameraFrontTemplate = 'Tablet front camera {n}',
+    this.cameraBackSingle = 'Tablet back camera',
+    this.cameraBackTemplate = 'Tablet back camera {n}',
+    this.chooseCamera = 'Choose camera',
+    this.usbCamerasHeading = 'USB cameras',
+    this.tabletCamerasHeading = 'Tablet cameras',
+    this.noUsbCameraNotice = 'No USB camera found. Using the tablet camera.',
+    this.refreshCameras = 'Refresh list',
+    this.useAnotherCamera = 'Use another camera',
   });
 
   final String issueMultiplePeople;
@@ -60,7 +73,7 @@ class MovementCaptureStrings {
   final String uploadingTemplate;
   final String uploadFailed;
   final String completed;
-  final String cameraNotConnected;
+  final String cameraNone;
   final String cameraPermissionDenied;
   final String cameraStreamUnsupported;
   final String cameraOther;
@@ -69,6 +82,18 @@ class MovementCaptureStrings {
   final String tryAgain;
   final String retry;
   final String done;
+  final String cameraExternalSingle;
+  final String cameraExternalTemplate;
+  final String cameraFrontSingle;
+  final String cameraFrontTemplate;
+  final String cameraBackSingle;
+  final String cameraBackTemplate;
+  final String chooseCamera;
+  final String usbCamerasHeading;
+  final String tabletCamerasHeading;
+  final String noUsbCameraNotice;
+  final String refreshCameras;
+  final String useAnotherCamera;
 
   String issue(CaptureIssue i) => switch (i) {
         CaptureIssue.multiplePeople => issueMultiplePeople,
@@ -80,11 +105,22 @@ class MovementCaptureStrings {
       };
 
   String cameraFailure(CameraFailure f) => switch (f) {
-        CameraFailure.notConnected => cameraNotConnected,
+        CameraFailure.noCamera => cameraNone,
         CameraFailure.permissionDenied => cameraPermissionDenied,
         CameraFailure.streamUnsupported => cameraStreamUnsupported,
         CameraFailure.other => cameraOther,
       };
+
+  String cameraLabel(CameraChoice c) {
+    final (single, template) = switch (c.kind) {
+      CameraKind.external => (cameraExternalSingle, cameraExternalTemplate),
+      CameraKind.front => (cameraFrontSingle, cameraFrontTemplate),
+      CameraKind.back => (cameraBackSingle, cameraBackTemplate),
+    };
+    return c.countOfKind > 1
+        ? template.replaceAll('{n}', '${c.ordinal}')
+        : single;
+  }
 
   String recording(int elapsed, int total) => recordingTemplate
       .replaceAll('{elapsed}', '$elapsed')
@@ -108,6 +144,12 @@ class MovementCaptureIcons {
     this.completed = Icons.check_circle_outline,
     this.recordingDot = Icons.fiber_manual_record,
     this.startRecording = Icons.videocam_outlined,
+    this.switchCamera = Icons.cameraswitch_outlined,
+    this.usbCamera = Icons.usb,
+    this.tabletCamera = Icons.tablet_android,
+    this.selectedCamera = Icons.check_circle,
+    this.refresh = Icons.refresh,
+    this.info = Icons.info_outline,
   });
 
   final IconData multiplePeople;
@@ -121,6 +163,12 @@ class MovementCaptureIcons {
   final IconData completed;
   final IconData recordingDot;
   final IconData startRecording;
+  final IconData switchCamera;
+  final IconData usbCamera;
+  final IconData tabletCamera;
+  final IconData selectedCamera;
+  final IconData refresh;
+  final IconData info;
 
   IconData issue(CaptureIssue i) => switch (i) {
         CaptureIssue.multiplePeople => multiplePeople,

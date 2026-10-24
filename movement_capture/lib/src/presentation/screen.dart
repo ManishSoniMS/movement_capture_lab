@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../domain/camera_choice.dart';
 import '../domain/capture_state.dart';
 import '../domain/config.dart';
 import '../domain/uploader.dart';
@@ -21,6 +22,7 @@ class MovementCaptureScreen extends StatefulWidget {
     this.icons = const MovementCaptureIcons(),
     this.style = const MovementCaptureStyle(),
     this.showDebugOverlay = false,
+    this.onCameraChanged,
   });
 
   final MovementCaptureConfig config;
@@ -29,6 +31,7 @@ class MovementCaptureScreen extends StatefulWidget {
   final MovementCaptureIcons icons;
   final MovementCaptureStyle style;
   final bool showDebugOverlay;
+  final void Function(CameraDescription camera)? onCameraChanged;
 
   @override
   State<MovementCaptureScreen> createState() => _MovementCaptureScreenState();
@@ -49,6 +52,7 @@ class _MovementCaptureScreenState extends State<MovementCaptureScreen>
     _controller = MovementCaptureController(
       config: widget.config,
       uploader: widget.uploader,
+      onCameraChanged: widget.onCameraChanged,
     );
     unawaited(_controller.start());
   }
@@ -123,6 +127,95 @@ class _Ui {
   final Color active;
 }
 
+Future<void> _showCameraSheet(
+  BuildContext context,
+  MovementCaptureController controller,
+  _Ui ui,
+) {
+  unawaited(controller.refreshCameras()); // pick up newly plugged cameras
+  return showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (sheetContext) => ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        final theme = Theme.of(context);
+        final s = ui.strings;
+        final selectedId = controller.selectedCamera?.id;
+        final usb = controller.cameras.where((c) => c.isExternal).toList();
+        final tablet = controller.cameras.where((c) => !c.isExternal).toList();
+
+        Widget heading(String text) => Padding(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+              child: Text(text, style: theme.textTheme.titleMedium),
+            );
+
+        Widget tile(CameraChoice c) => ListTile(
+              minTileHeight: 64,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+              leading: Icon(
+                c.isExternal ? ui.icons.usbCamera : ui.icons.tabletCamera,
+                size: 32,
+              ),
+              title: Text(s.cameraLabel(c), style: theme.textTheme.titleLarge),
+              trailing: c.id == selectedId
+                  ? Icon(ui.icons.selectedCamera, color: ui.active, size: 32)
+                  : null,
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                unawaited(controller.selectCamera(c));
+              },
+            );
+
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(context).height * 0.8,
+            ),
+            child: ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.only(bottom: 16),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Text(s.chooseCamera,
+                      style: theme.textTheme.headlineSmall),
+                ),
+                heading(s.usbCamerasHeading),
+                if (usb.isEmpty)
+                  ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+                    leading: Icon(ui.icons.info, size: 28),
+                    title: Text(s.noUsbCameraNotice,
+                        style: theme.textTheme.bodyLarge),
+                  )
+                else
+                  ...usb.map(tile),
+                if (tablet.isNotEmpty) heading(s.tabletCamerasHeading),
+                ...tablet.map(tile),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      style: TextButton.styleFrom(
+                          minimumSize: const Size(160, 56)),
+                      onPressed: controller.refreshCameras,
+                      icon: Icon(ui.icons.refresh),
+                      label: Text(s.refreshCameras),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    ),
+  );
+}
+
 class _CaptureBody extends StatelessWidget {
   const _CaptureBody({
     required this.controller,
@@ -137,6 +230,16 @@ class _CaptureBody extends StatelessWidget {
   final _Ui ui;
   final bool showDebug;
   final void Function([String? analysisId]) onClose;
+
+  bool _mirror(CameraChoice? c) {
+    final config = controller.config;
+    return switch (c?.kind) {
+      CameraKind.external => config.mirrorExternalPreview,
+      CameraKind.front => config.mirrorFrontPreview,
+      CameraKind.back => config.mirrorBackPreview,
+      null => false,
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -155,9 +258,9 @@ class _CaptureBody extends StatelessWidget {
       children: [
         if (cam != null && cam.value.isInitialized)
           Center(
-            // Mirrored for display only; the recorded file is not mirrored.
+            // Display-only mirroring; the recorded file is never mirrored.
             child: Transform.flip(
-              flipX: true,
+              flipX: _mirror(controller.selectedCamera),
               child: CameraPreview(
                 cam,
                 child: Stack(
@@ -189,7 +292,11 @@ class _CaptureBody extends StatelessWidget {
           top: 24,
           left: 24,
           right: showDebug ? 320 : 24,
-          child: _TopBanner(state: state, ui: ui),
+          child: _TopBanner(
+            state: state,
+            ui: ui,
+            showFallbackNotice: controller.usingTabletFallback,
+          ),
         ),
         if (showDebug)
           Positioned(
@@ -205,18 +312,20 @@ class _CaptureBody extends StatelessWidget {
           right: 24,
           bottom: 24,
           child: _BottomBar(
+            controller: controller,
             state: state,
             ui: ui,
             onStart: controller.startRequested,
             onCancel: () => onClose(),
+            onChooseCamera: () => _showCameraSheet(context, controller, ui),
           ),
         ),
-        if (_panel() case final Widget panel) panel,
+        if (_panel(context) case final Widget panel) panel,
       ],
     );
   }
 
-  Widget? _panel() {
+  Widget? _panel(BuildContext context) {
     final s = ui.strings;
     return switch (state) {
       Initializing() => _Panel(ui: ui, busy: true, message: s.starting),
@@ -229,6 +338,9 @@ class _CaptureBody extends StatelessWidget {
           onPrimary: controller.retryCamera,
           secondaryLabel: s.cancel,
           onSecondary: () => onClose(),
+          tertiaryLabel:
+              controller.cameras.isNotEmpty ? s.useAnotherCamera : null,
+          onTertiary: () => _showCameraSheet(context, controller, ui),
         ),
       NeedsOperator(:final lastIssue) => _Panel(
           ui: ui,
@@ -239,6 +351,9 @@ class _CaptureBody extends StatelessWidget {
           onPrimary: controller.operatorRetry,
           secondaryLabel: s.cancel,
           onSecondary: () => onClose(),
+          tertiaryLabel:
+              controller.cameras.length > 1 ? s.useAnotherCamera : null,
+          onTertiary: () => _showCameraSheet(context, controller, ui),
         ),
       Uploading(:final progress) => _Panel(
           ui: ui,
@@ -269,9 +384,14 @@ class _CaptureBody extends StatelessWidget {
 }
 
 class _TopBanner extends StatelessWidget {
-  const _TopBanner({required this.state, required this.ui});
+  const _TopBanner({
+    required this.state,
+    required this.ui,
+    required this.showFallbackNotice,
+  });
   final CaptureState state;
   final _Ui ui;
+  final bool showFallbackNotice;
 
   @override
   Widget build(BuildContext context) {
@@ -303,7 +423,26 @@ class _TopBanner extends StatelessWidget {
       case Checking(:final armed):
         return _BannerCard(
           color: scheme.surfaceContainerHigh,
-          child: Text(armed ? s.hintArmed : s.hintIdle, style: textStyle),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(armed ? s.hintArmed : s.hintIdle, style: textStyle),
+              if (showFallbackNotice) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Icon(ui.icons.info, size: 28),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(s.noUsbCameraNotice,
+                          style: theme.textTheme.titleMedium),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
         );
       case CountingDown():
         return _BannerCard(
@@ -385,16 +524,20 @@ class _CountdownNumber extends StatelessWidget {
 
 class _BottomBar extends StatelessWidget {
   const _BottomBar({
+    required this.controller,
     required this.state,
     required this.ui,
     required this.onStart,
     required this.onCancel,
+    required this.onChooseCamera,
   });
 
+  final MovementCaptureController controller;
   final CaptureState state;
   final _Ui ui;
   final VoidCallback onStart;
   final VoidCallback onCancel;
+  final VoidCallback onChooseCamera;
 
   static const _minSize = Size(200, 56);
 
@@ -408,6 +551,8 @@ class _BottomBar extends StatelessWidget {
       Checking(armed: false) => true,
       _ => false,
     };
+    final selected = controller.selectedCamera;
+    final showCameraButton = controller.canChangeCamera && selected != null;
 
     return Row(
       children: [
@@ -416,6 +561,20 @@ class _BottomBar extends StatelessWidget {
           onPressed: onCancel,
           child: Text(ui.strings.cancel),
         ),
+        if (showCameraButton) ...[
+          const SizedBox(width: 16),
+          Flexible(
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(minimumSize: const Size(56, 56)),
+              onPressed: onChooseCamera,
+              icon: Icon(ui.icons.switchCamera),
+              label: Text(
+                ui.strings.cameraLabel(selected),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+        ],
         const Spacer(),
         if (showStart)
           FilledButton.icon(
@@ -441,6 +600,8 @@ class _Panel extends StatelessWidget {
     this.onPrimary,
     this.secondaryLabel,
     this.onSecondary,
+    this.tertiaryLabel,
+    this.onTertiary,
   });
 
   final _Ui ui;
@@ -453,17 +614,20 @@ class _Panel extends StatelessWidget {
   final VoidCallback? onPrimary;
   final String? secondaryLabel;
   final VoidCallback? onSecondary;
+  final String? tertiaryLabel;
+  final VoidCallback? onTertiary;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    const buttonSize = Size(160, 56);
     return Positioned.fill(
       child: ColoredBox(
         color: scheme.scrim.withValues(alpha: 0.6),
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 560),
+            constraints: const BoxConstraints(maxWidth: 620),
             child: Material(
               color: scheme.surface,
               borderRadius: BorderRadius.circular(24),
@@ -493,24 +657,34 @@ class _Panel extends StatelessWidget {
                       textAlign: TextAlign.center,
                       style: theme.textTheme.headlineSmall,
                     ),
-                    if (primaryLabel != null || secondaryLabel != null) ...[
+                    if (primaryLabel != null ||
+                        secondaryLabel != null ||
+                        tertiaryLabel != null) ...[
                       const SizedBox(height: 32),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        spacing: 16,
+                        runSpacing: 12,
                         children: [
                           if (secondaryLabel != null)
                             OutlinedButton(
                               style: OutlinedButton.styleFrom(
-                                  minimumSize: const Size(160, 56)),
+                                  minimumSize: buttonSize),
                               onPressed: onSecondary,
                               child: Text(secondaryLabel!),
                             ),
-                          if (primaryLabel != null && secondaryLabel != null)
-                            const SizedBox(width: 16),
+                          if (tertiaryLabel != null)
+                            OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                  minimumSize: buttonSize),
+                              onPressed: onTertiary,
+                              icon: Icon(ui.icons.switchCamera),
+                              label: Text(tertiaryLabel!),
+                            ),
                           if (primaryLabel != null)
                             FilledButton(
                               style: FilledButton.styleFrom(
-                                  minimumSize: const Size(160, 56)),
+                                  minimumSize: buttonSize),
                               onPressed: onPrimary,
                               child: Text(primaryLabel!),
                             ),

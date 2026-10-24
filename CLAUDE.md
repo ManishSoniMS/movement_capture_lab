@@ -40,12 +40,12 @@ Package (`movement_capture/lib/src`) and lab app (`lib/`) both use `domain/`, `d
 
 Package:
 
-- `domain/`: `CaptureIssue`, sealed `CaptureState`, `MovementCaptureConfig`, `FrameMetrics`/`FrameCheck`/`LandmarkPoint`/`UnsupportedFrameFormat`, `LumaStats`, `QualityTimer`, upload contract (`MovementUploader`, `MovementClip`, `UploadCancellation`), and the interfaces `CaptureStorage` and `FrameAnalyzer`. No ML Kit, `path_provider` or widget imports. Exception: `camera` types (`CameraImage`, `ResolutionPreset`) and `DeviceOrientation` appear because they are part of the public API vocabulary.
+- `domain/`: `CameraChoice`/`pickDefaultCamera`/`analysisRotationDegrees` (camera selection rules), `CaptureIssue`, sealed `CaptureState`, `MovementCaptureConfig`, `FrameMetrics`/`FrameCheck`/`LandmarkPoint`/`UnsupportedFrameFormat`, `LumaStats`, `QualityTimer`, upload contract (`MovementUploader`, `MovementClip`, `UploadCancellation`), and the interfaces `CaptureStorage` and `FrameAnalyzer`. No ML Kit, `path_provider` or widget imports. Exception: `camera` types (`CameraImage`, `ResolutionPreset`) and `DeviceOrientation` appear because they are part of the public API vocabulary.
 - `data/`: `MlKitFrameAnalyzer` (implements `FrameAnalyzer`, the only ML Kit code) and `FileCaptureStorage` (implements `CaptureStorage`, the only code touching capture files and `path_provider`).
 - `presentation/`: `MovementCaptureController`, `MovementCaptureScreen`, `debug_overlay.dart`, `customization.dart` (`MovementCaptureStrings/Icons/Style`).
 - `api.dart`: public facade `MovementCapture.open / purgeAll / listCameras`. `lib/movement_capture.dart` is the only file hosts import.
 
-The controller takes `storage:` and `analyzerFactory:` constructor params (defaults: `FileCaptureStorage`, `MlKitFrameAnalyzer`), so tests inject fakes. Known gap: it still creates `CameraController` directly (no camera gateway yet), so controller flows can't be unit-tested without a device.
+The controller takes `storage:`, `analyzerFactory:` (called with `rotationDegrees:` callback) and `onCameraChanged:` constructor params (defaults: `FileCaptureStorage`, `MlKitFrameAnalyzer`), so tests inject fakes. Known gap: it still creates `CameraController` directly (no camera gateway yet), so controller flows can't be unit-tested without a device.
 
 Lab app: `domain/lab_settings.dart` (`UploaderMode`, settings), `data/uploaders.dart`, `presentation/` (`home_page.dart`, `camera_info_page.dart`). Keep it thin; no business logic in the lab.
 
@@ -55,10 +55,14 @@ New code goes in the layer that fits. New plugin access needs a `domain` interfa
 
 `MovementCapture.open(context, config:, uploader:, ...)` pushes `MovementCaptureScreen`, returns `String? analysisId` (null = operator cancelled). `purgeAll()` wipes `<cache>/movement_capture/` (never call while a capture screen is open).
 
-- Controller: ChangeNotifier owned by the screen State. Sealed `CaptureState`: Initializing → Checking → CountingDown → Recording → Uploading → Completed, plus CameraUnavailable / NeedsOperator / UploadFailed. An `_epoch` counter is bumped each phase so stale async ML results are discarded; guard flags (`_busyTransition`, `_disposed`, `_tornDown`) protect against races. Preserve this pattern when adding async work. It picks the first external-lens camera, NV21 stream, no audio.
+- Controller: ChangeNotifier owned by the screen State. Sealed `CaptureState`: Initializing → Checking → CountingDown → Recording → Uploading → Completed, plus CameraUnavailable / NeedsOperator / UploadFailed. An `_epoch` counter is bumped each phase so stale async ML results are discarded; guard flags (`_busyTransition`, `_disposed`, `_tornDown`) protect against races. Preserve this pattern when adding async work. Camera pick: preferred id if still present, else first USB (external) camera, else front, else back; NV21 stream, no audio. The operator may switch camera only in `Checking(armed: false)`, `NeedsOperator`, `CameraUnavailable` (`canChangeCamera`). `onCameraChanged` fires on operator picks only, never on automatic fallback. USB camera uses fixed `cameraRotationDegrees`; tablet cameras derive rotation from sensor orientation + screen. Preview mirroring is per camera kind (`mirror*Preview`), display only.
 - `MlKitFrameAnalyzer`: per-frame pose/face detection + luma stats → `FrameMetrics` with a set of `CaptureIssue`s (priority = enum order: multiplePeople, noPerson, outOfFrame, tooDark, tooBright, backlit). Skips frames when busy or inside `analysisInterval`. Throws `UnsupportedFrameFormat` unless the frame is single-plane NV21.
 - `QualityTimer`: debounces issues (`violationGrace`; `stableBeforeStart` is applied by the controller) so flicker doesn't interrupt capture.
 - `MovementCaptureConfig` clamps `maxDuration` to 5–30 s and asserts `cameraRotationDegrees` in {0, 90, 180, 270}.
+
+## Android camera implementation
+
+Android must use `camera_android` (Camera2), not the default CameraX, which can fail to list USB cameras. Flutter only switches implementation when `camera_android` is a **direct dependency of the app**, so both the package and the lab list it; any host must too. It skips non-numeric camera ids (do not work around inside the package). The lab's Camera diagnostics page (`camera_info_page.dart` + `MainActivity.kt` channel `lab/camera_diagnostics`) shows the active implementation and Camera2 ids. That channel is lab only; never copy it into the package or kiosk app.
 
 ## Package hard rules (from its README)
 

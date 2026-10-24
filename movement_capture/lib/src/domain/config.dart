@@ -9,7 +9,11 @@ class MovementCaptureConfig {
     this.violationGrace = const Duration(milliseconds: 400),
     this.maxRestarts = 3,
     this.resolution = ResolutionPreset.high,
+    this.preferredCameraId,
     this.cameraRotationDegrees = 0,
+    this.mirrorExternalPreview = true,
+    this.mirrorFrontPreview = true,
+    this.mirrorBackPreview = false,
     this.safeZoneInset = 0.075,
     this.minLandmarkLikelihood = 0.5,
     this.minMeanLuma = 60,
@@ -35,9 +39,19 @@ class MovementCaptureConfig {
   final int maxRestarts;
   final ResolutionPreset resolution;
 
-  /// Rotation of the webcam image relative to upright, for ML Kit only.
-  /// Fixed per installation: the webcam does not rotate with the tablet.
+  /// Camera ID the operator chose last time (from `onCameraChanged`). Used if
+  /// still connected; otherwise the default rule applies.
+  final String? preferredCameraId;
+
+  /// Rotation of the USB camera image relative to upright, for the quality
+  /// checks only. Fixed per installation: the webcam does not rotate with the
+  /// tablet. Tablet cameras ignore this and use their sensor orientation.
   final int cameraRotationDegrees;
+
+  /// Display-only mirroring per camera type. Recorded files are never mirrored.
+  final bool mirrorExternalPreview;
+  final bool mirrorFrontPreview;
+  final bool mirrorBackPreview;
 
   /// Fraction of width/height kept clear at each edge (wide-lens distortion).
   final double safeZoneInset;

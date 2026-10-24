@@ -11,6 +11,8 @@ dependencies:
     sdk: flutter
   movement_capture:
     path: movement_capture
+  camera_android: ^0.10.10 # REQUIRED: selects the Camera2 implementation
+  camera_platform_interface: ^2.10.0 # to show which implementation is active
   dio: ^5.11.1
   path_provider: ^2.1.6
 

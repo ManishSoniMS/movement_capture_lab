@@ -15,4 +15,12 @@ void main() {
     expect(() => MovementCaptureConfig(cameraRotationDegrees: 45),
         throwsA(isA<AssertionError>()));
   });
+
+  test('camera defaults: no preferred id, mirror USB and front but not back', () {
+    final c = MovementCaptureConfig();
+    expect(c.preferredCameraId, isNull);
+    expect(c.mirrorExternalPreview, isTrue);
+    expect(c.mirrorFrontPreview, isTrue);
+    expect(c.mirrorBackPreview, isFalse);
+  });
 }

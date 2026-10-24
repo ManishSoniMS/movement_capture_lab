@@ -8,7 +8,7 @@ final class Initializing extends CaptureState {
   const Initializing();
 }
 
-enum CameraFailure { notConnected, permissionDenied, streamUnsupported, other }
+enum CameraFailure { noCamera, permissionDenied, streamUnsupported, other }
 
 final class CameraUnavailable extends CaptureState {
   const CameraUnavailable(this.reason);

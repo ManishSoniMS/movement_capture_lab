@@ -34,6 +34,7 @@ class FrameMetrics {
     required this.landmarks,
     required this.issues,
     required this.analysesPerSecond,
+    required this.rotationDegrees,
   });
   final LumaStats luma;
   final int faces;
@@ -41,6 +42,9 @@ class FrameMetrics {
   final List<LandmarkPoint> landmarks;
   final Set<CaptureIssue> issues;
   final int analysesPerSecond;
+
+  /// Rotation (0/90/180/270) that was given to the detector for this frame.
+  final int rotationDegrees;
 }
 
 class FrameCheck {

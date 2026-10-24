@@ -13,8 +13,9 @@ import '../domain/luma_stats.dart';
 
 /// ML Kit pose + face detection plus luma stats.
 class MlKitFrameAnalyzer implements FrameAnalyzer {
-  MlKitFrameAnalyzer(this._config)
-      : _pose = PoseDetector(
+  MlKitFrameAnalyzer(this._config, {required int Function() rotationDegrees})
+      : _rotationDegrees = rotationDegrees,
+        _pose = PoseDetector(
           options: PoseDetectorOptions(
             mode: PoseDetectionMode.stream,
             model: PoseDetectionModel.base,
@@ -28,6 +29,7 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
         );
 
   final MovementCaptureConfig _config;
+  final int Function() _rotationDegrees;
   final PoseDetector _pose;
   final FaceDetector _faces;
 
@@ -67,7 +69,8 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
       ..removeWhere((t) => now.difference(t) > const Duration(seconds: 1));
 
     try {
-      final input = _toInputImage(image); // validates format, copies bytes
+      final rotation = _normalise(_rotationDegrees());
+      final input = _toInputImage(image, rotation); // validates, copies bytes
       final plane = image.planes.first;
       final luma = LumaStats.fromLumaPlane(
         plane.bytes,
@@ -88,7 +91,7 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
       if (poses.isEmpty) {
         issues.add(CaptureIssue.noPerson);
       } else {
-        points = _evaluate(poses.first, _uprightSize(image));
+        points = _evaluate(poses.first, _uprightSize(image, rotation));
         if (points.any((p) => !p.ok)) issues.add(CaptureIssue.outOfFrame);
       }
 
@@ -102,6 +105,7 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
           landmarks: points,
           issues: issues,
           analysesPerSecond: _runTimes.length,
+          rotationDegrees: rotation,
         ),
       );
     } finally {
@@ -115,7 +119,13 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
     await _faces.close();
   }
 
-  InputImage _toInputImage(CameraImage image) {
+  static int _normalise(int degrees) {
+    final d = ((degrees % 360) + 360) % 360;
+    // Snap to the nearest quarter turn; ML Kit accepts only these.
+    return ((d + 45) ~/ 90 % 4) * 90;
+  }
+
+  InputImage _toInputImage(CameraImage image, int rotationDegrees) {
     final format = InputImageFormatValue.fromRawValue(image.format.raw);
     if (format != InputImageFormat.nv21 || image.planes.length != 1) {
       throw UnsupportedFrameFormat(
@@ -123,9 +133,8 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
         'with ${image.planes.length} planes',
       );
     }
-    final rotation =
-        InputImageRotationValue.fromRawValue(_config.cameraRotationDegrees) ??
-            InputImageRotation.rotation0deg;
+    final rotation = InputImageRotationValue.fromRawValue(rotationDegrees) ??
+        InputImageRotation.rotation0deg;
     final plane = image.planes.first;
     return InputImage.fromBytes(
       bytes: Uint8List.fromList(plane.bytes),
@@ -139,9 +148,8 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
   }
 
   /// ML Kit returns coordinates in the upright (rotated) image.
-  Size _uprightSize(CameraImage image) {
-    final swap = _config.cameraRotationDegrees == 90 ||
-        _config.cameraRotationDegrees == 270;
+  Size _uprightSize(CameraImage image, int rotationDegrees) {
+    final swap = rotationDegrees == 90 || rotationDegrees == 270;
     return swap
         ? Size(image.height.toDouble(), image.width.toDouble())
         : Size(image.width.toDouble(), image.height.toDouble());

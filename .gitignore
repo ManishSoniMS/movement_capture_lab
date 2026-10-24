@@ -49,3 +49,5 @@ app.*.map.json
 
 # graphify output
 graphify-out/
+
+PROMPT.md

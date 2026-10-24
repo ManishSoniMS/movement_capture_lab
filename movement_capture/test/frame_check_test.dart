@@ -10,6 +10,7 @@ FrameMetrics _metrics(Set<CaptureIssue> issues) => FrameMetrics(
       landmarks: const [],
       issues: issues,
       analysesPerSecond: 6,
+      rotationDegrees: 0,
     );
 
 void main() {

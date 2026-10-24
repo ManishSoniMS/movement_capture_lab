@@ -48,6 +48,7 @@ class _HomePageState extends State<HomePage> {
       config: _s.toConfig(),
       uploader: _uploader(),
       showDebugOverlay: _s.debugOverlay,
+      onCameraChanged: (camera) => _s.lastCameraId = camera.name,
     );
     if (!mounted) return;
     setState(() => _log.insert(0,
@@ -88,7 +89,7 @@ class _HomePageState extends State<HomePage> {
         title: const Text('Movement Capture Lab'),
         actions: [
           IconButton(
-            tooltip: 'Cameras',
+            tooltip: 'Camera diagnostics',
             icon: const Icon(Icons.usb),
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const CameraInfoPage()),
@@ -136,6 +137,29 @@ class _HomePageState extends State<HomePage> {
                   .toList(),
               onChanged: (v) =>
                   setState(() => _s.resolution = v ?? ResolutionPreset.high),
+            ),
+          ),
+          SwitchListTile(
+            title: const Text('Mirror USB camera preview'),
+            value: _s.mirrorExternal,
+            onChanged: (v) => setState(() => _s.mirrorExternal = v),
+          ),
+          SwitchListTile(
+            title: const Text('Mirror tablet front camera preview'),
+            value: _s.mirrorFront,
+            onChanged: (v) => setState(() => _s.mirrorFront = v),
+          ),
+          SwitchListTile(
+            title: const Text('Mirror tablet back camera preview'),
+            value: _s.mirrorBack,
+            onChanged: (v) => setState(() => _s.mirrorBack = v),
+          ),
+          ListTile(
+            title: const Text('Last chosen camera'),
+            subtitle: Text(_s.lastCameraId ?? 'none (automatic)'),
+            trailing: TextButton(
+              onPressed: () => setState(() => _s.lastCameraId = null),
+              child: const Text('Clear'),
             ),
           ),
           const _Section('Framing'),

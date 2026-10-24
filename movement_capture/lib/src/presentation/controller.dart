@@ -3,9 +3,11 @@ import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import '../data/file_capture_storage.dart';
 import '../data/mlkit_frame_analyzer.dart';
+import '../domain/camera_choice.dart';
 import '../domain/capture_issue.dart';
 import '../domain/capture_state.dart';
 import '../domain/capture_storage.dart';
@@ -21,8 +23,10 @@ class MovementCaptureController extends ChangeNotifier {
     required this.config,
     required MovementUploader uploader,
     CaptureStorage storage = const FileCaptureStorage(),
-    FrameAnalyzer Function(MovementCaptureConfig config) analyzerFactory =
-        MlKitFrameAnalyzer.new,
+    FrameAnalyzer Function(MovementCaptureConfig config,
+            {required int Function() rotationDegrees})
+        analyzerFactory = MlKitFrameAnalyzer.new,
+    this.onCameraChanged,
   })  : _uploader = uploader,
         _storage = storage,
         _analyzerFactory = analyzerFactory,
@@ -31,8 +35,12 @@ class MovementCaptureController extends ChangeNotifier {
   final MovementCaptureConfig config;
   final MovementUploader _uploader;
   final CaptureStorage _storage;
-  final FrameAnalyzer Function(MovementCaptureConfig) _analyzerFactory;
+  final FrameAnalyzer Function(MovementCaptureConfig,
+      {required int Function() rotationDegrees}) _analyzerFactory;
   final QualityTimer _quality;
+
+  /// Fired only when the operator picks a camera from the list.
+  final void Function(CameraDescription camera)? onCameraChanged;
 
   /// Latest analysis numbers, for the debug overlay.
   final ValueNotifier<FrameMetrics?> metrics = ValueNotifier(null);
@@ -43,6 +51,28 @@ class MovementCaptureController extends ChangeNotifier {
   CameraController? _camera;
   CameraController? get camera => _camera;
   FrameAnalyzer? _analyzer;
+
+  List<CameraChoice> _choices = const [];
+  List<CameraChoice> get cameras => _choices;
+  CameraChoice? _selected;
+  CameraChoice? get selectedCamera => _selected;
+
+  /// True when no USB camera is connected and a tablet camera is in use.
+  bool get usingTabletFallback =>
+      _selected != null &&
+      !_selected!.isExternal &&
+      !_choices.any((c) => c.isExternal);
+
+  /// The camera list may be opened in these states only.
+  bool get canChangeCamera {
+    if (_starting || _busyTransition) return false;
+    return switch (_state) {
+      Checking(armed: false) => true,
+      NeedsOperator() => true,
+      CameraUnavailable() => true,
+      _ => false,
+    };
+  }
 
   // `_epoch` changes with every phase, so ML results computed for an older
   // phase are thrown away.
@@ -72,48 +102,75 @@ class MovementCaptureController extends ChangeNotifier {
     'CameraAccessRestricted',
   };
 
+  static const Map<DeviceOrientation, int> _orientationDegrees = {
+    DeviceOrientation.portraitUp: 0,
+    DeviceOrientation.landscapeLeft: 90,
+    DeviceOrientation.portraitDown: 180,
+    DeviceOrientation.landscapeRight: 270,
+  };
+
   // ---------------------------------------------------------------- public
 
+  /// Lists cameras and opens the best one: the current/preferred camera if
+  /// still connected, else the first USB camera, else front, else back.
   Future<void> start() async {
     if (_disposed || _starting) return;
     _starting = true;
     _setState(const Initializing());
     try {
       await _storage.purgeAll(); // leftovers from a crash or kill
-      final cameras = await availableCameras();
-      final external = cameras
-          .where((c) => c.lensDirection == CameraLensDirection.external)
-          .toList();
-      if (external.isEmpty) {
-        debugPrint('movement_capture: no external camera. Found: '
-            '${cameras.map((c) => '${c.name}/${c.lensDirection}').join(', ')}');
-        _setState(const CameraUnavailable(CameraFailure.notConnected));
-        return;
-      }
-
-      final cam = CameraController(
-        external.first,
-        config.resolution,
-        enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.nv21,
+      final choices = await _enumerate();
+      final choice = pickDefaultCamera(
+        choices,
+        preferredId: _selected?.id ?? config.preferredCameraId,
       );
-      _camera = cam;
-      await cam.initialize();
-      if (_disposed) {
-        await cam.dispose();
+      if (choice == null) {
+        _setState(const CameraUnavailable(CameraFailure.noCamera));
         return;
       }
-      cam.addListener(_onCameraValue);
-      _analyzer = _analyzerFactory(config);
-      await _beginChecking();
+      await _open(choice);
     } on CameraException catch (e) {
       debugPrint('movement_capture: init failed ${e.code} ${e.description}');
       await _releaseCamera();
-      _setState(CameraUnavailable(_permissionCodes.contains(e.code)
-          ? CameraFailure.permissionDenied
-          : CameraFailure.other));
+      _setState(CameraUnavailable(_failureFor(e)));
     } finally {
       _starting = false;
+    }
+  }
+
+  /// Operator picked a camera from the list.
+  Future<void> selectCamera(CameraChoice choice) async {
+    if (_disposed || !canChangeCamera) return;
+    if (choice.id == _selected?.id && _camera != null && _state is Checking) {
+      return; // already in use
+    }
+    _starting = true;
+    _setState(const Initializing());
+    try {
+      _newPhase();
+      _cancelAllTimers();
+      await _releaseCamera();
+      _restarts = 0;
+      await _storage.purgeAll(); // safe: nothing is recording
+      await _open(choice);
+      onCameraChanged?.call(choice.description);
+    } on CameraException catch (e) {
+      debugPrint('movement_capture: switch to ${choice.id} failed ${e.code}');
+      await _releaseCamera();
+      _setState(CameraUnavailable(_failureFor(e)));
+    } finally {
+      _starting = false;
+    }
+  }
+
+  /// Re-reads the camera list (e.g. after plugging in a webcam). Does not
+  /// change the camera in use.
+  Future<void> refreshCameras() async {
+    if (_disposed) return;
+    try {
+      await _enumerate();
+    } on CameraException catch (e) {
+      debugPrint('movement_capture: refresh failed ${e.code}');
     }
   }
 
@@ -133,6 +190,8 @@ class MovementCaptureController extends ChangeNotifier {
     await _beginChecking(armed: true);
   }
 
+  /// Re-lists cameras and reopens: the same camera if still connected,
+  /// otherwise the default rule (a missing USB camera falls back to the tablet).
   Future<void> retryCamera() async {
     if (_state is! CameraUnavailable) return;
     await _releaseCamera();
@@ -170,6 +229,55 @@ class MovementCaptureController extends ChangeNotifier {
     metrics.dispose();
     super.dispose();
   }
+
+  // ---------------------------------------------------------- camera setup
+
+  Future<List<CameraChoice>> _enumerate() async {
+    final cams = await availableCameras();
+    debugPrint('movement_capture: cameras = '
+        '${cams.map((c) => '${c.name}/${c.lensDirection.name}/${c.sensorOrientation}°').join(', ')}');
+    _choices = buildCameraChoices(cams);
+    if (!_disposed) notifyListeners();
+    return _choices;
+  }
+
+  /// Throws CameraException on failure; callers handle it.
+  Future<void> _open(CameraChoice choice) async {
+    _selected = choice;
+    final cam = CameraController(
+      choice.description,
+      config.resolution,
+      enableAudio: false,
+      imageFormatGroup: ImageFormatGroup.nv21,
+    );
+    _camera = cam;
+    await cam.initialize();
+    if (_disposed) {
+      await cam.dispose();
+      return;
+    }
+    cam.addListener(_onCameraValue);
+    _analyzer =
+        _analyzerFactory(config, rotationDegrees: _analysisRotation);
+    await _beginChecking();
+  }
+
+  int _analysisRotation() {
+    final choice = _selected;
+    final cam = _camera;
+    if (choice == null || cam == null) return config.cameraRotationDegrees;
+    return analysisRotationDegrees(
+      kind: choice.kind,
+      sensorOrientation: choice.description.sensorOrientation,
+      screenDegrees: _orientationDegrees[cam.value.deviceOrientation] ?? 0,
+      configRotation: config.cameraRotationDegrees,
+    );
+  }
+
+  CameraFailure _failureFor(CameraException e) =>
+      _permissionCodes.contains(e.code)
+          ? CameraFailure.permissionDenied
+          : CameraFailure.other;
 
   // --------------------------------------------------------------- phases
 

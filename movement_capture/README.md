@@ -26,6 +26,9 @@ dependencies:
       ref: movement_capture-v0.1.0
 ```
 
+Host apps must also add `camera_android` to their own pubspec.yaml; otherwise
+Android falls back to CameraX, which may not list USB cameras.
+
 Requirements: `minSdkVersion` >= 24. The host must grant CAMERA (via MDM on
 kiosks). No microphone permission is needed. The host must check video
 consent **before** calling `open`.
@@ -42,6 +45,15 @@ final analysisId = await MovementCapture.open(
 
 Call `MovementCapture.purgeAll()` on logout and before login (never while a
 capture screen is open).
+
+## Camera choice
+
+First USB camera if connected; otherwise the tablet front camera (with a
+notice), otherwise the back camera. The operator can switch from the bottom
+bar before Start, on the "Recording keeps stopping" panel and on the "camera
+unavailable" panel. `open(onCameraChanged:)` fires only when the operator picks
+a camera, never on automatic fallback; keep `camera.name` in memory and pass it
+back as `preferredCameraId`. The package stores nothing.
 
 ## MovementUploader contract
 
@@ -65,7 +77,9 @@ Retry policy (attempts, backoff) is the uploader's job. Stop when
 | violationGrace | 400 ms |
 | maxRestarts | 3 |
 | resolution | ResolutionPreset.high |
-| cameraRotationDegrees | 0 |
+| preferredCameraId | null |
+| cameraRotationDegrees | 0 (USB camera only; tablet cameras derive it) |
+| mirrorExternalPreview / mirrorFrontPreview / mirrorBackPreview | true / true / false |
 | safeZoneInset | 0.075 |
 | minLandmarkLikelihood | 0.5 |
 | minMeanLuma / maxMeanLuma | 60 / 200 |

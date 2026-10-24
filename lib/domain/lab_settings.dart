@@ -19,6 +19,12 @@ class LabSettings {
   double maxClipped = 0.25;
   double minCenterToBorder = 0.6;
   double analysisIntervalMs = 150;
+  bool mirrorExternal = true;
+  bool mirrorFront = true;
+  bool mirrorBack = false;
+
+  /// Camera the operator last picked (in memory only).
+  String? lastCameraId;
   UploaderMode uploaderMode = UploaderMode.mock;
   bool debugOverlay = true;
 
@@ -29,7 +35,11 @@ class LabSettings {
         violationGrace: Duration(milliseconds: graceMs.round()),
         maxRestarts: maxRestarts.round(),
         resolution: resolution,
+        preferredCameraId: lastCameraId,
         cameraRotationDegrees: rotation,
+        mirrorExternalPreview: mirrorExternal,
+        mirrorFrontPreview: mirrorFront,
+        mirrorBackPreview: mirrorBack,
         safeZoneInset: safeZoneInset,
         minLandmarkLikelihood: minLikelihood,
         minMeanLuma: minLuma.round(),
@@ -46,5 +56,6 @@ class LabSettings {
       'rotation=$rotation res=${resolution.name} inset=${safeZoneInset.toStringAsFixed(3)} '
       'likelihood=${minLikelihood.toStringAsFixed(2)} luma=${minLuma.round()}–${maxLuma.round()} '
       'clipped=${maxClipped.toStringAsFixed(2)} centre/border=${minCenterToBorder.toStringAsFixed(2)} '
-      'interval=${analysisIntervalMs.round()}ms';
+      'interval=${analysisIntervalMs.round()}ms '
+      'mirror(usb/front/back)=$mirrorExternal/$mirrorFront/$mirrorBack';
 }

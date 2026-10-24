@@ -22,6 +22,7 @@ class DebugMetricsPanel extends StatelessWidget {
                 .first;
         final lines = [
           'analyses/s: ${m.analysesPerSecond}',
+          'rotation: ${m.rotationDegrees}°',
           'brightness: ${m.luma.mean.toStringAsFixed(0)}',
           'clipped: ${(m.luma.clippedFraction * 100).toStringAsFixed(0)}%',
           'centre/border: ${m.luma.centerToBorder.toStringAsFixed(2)}',
@@ -48,7 +49,7 @@ class DebugMetricsPanel extends StatelessWidget {
 }
 
 /// Draws the required body points on the preview: filled = ok, hollow = failing.
-/// Accurate when cameraRotationDegrees is 0.
+/// Accurate when the overlay's rotation line reads 0.
 class LandmarkLayer extends StatelessWidget {
   const LandmarkLayer({
     super.key,
