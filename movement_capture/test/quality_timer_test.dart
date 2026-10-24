@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movement_capture/movement_capture.dart';
-import 'package:movement_capture/src/quality_timer.dart';
+import 'package:movement_capture/src/domain/quality_timer.dart';
 
 void main() {
   final t0 = DateTime(2026, 1, 1, 10);

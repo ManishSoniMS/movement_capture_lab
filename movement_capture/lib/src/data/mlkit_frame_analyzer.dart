@@ -5,68 +5,15 @@ import 'package:camera/camera.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
-import 'capture_issue.dart';
-import 'config.dart';
-import 'luma_stats.dart';
+import '../domain/capture_issue.dart';
+import '../domain/config.dart';
+import '../domain/frame_analyzer.dart';
+import '../domain/frame_metrics.dart';
+import '../domain/luma_stats.dart';
 
-class UnsupportedFrameFormat implements Exception {
-  const UnsupportedFrameFormat(this.detail);
-  final String detail;
-  @override
-  String toString() => 'UnsupportedFrameFormat: $detail';
-}
-
-/// One required body point, in normalised upright image coordinates (0–1).
-/// x/y are -1 when ML Kit did not return the point.
-class LandmarkPoint {
-  const LandmarkPoint({
-    required this.name,
-    required this.x,
-    required this.y,
-    required this.likelihood,
-    required this.ok,
-  });
-  final String name;
-  final double x;
-  final double y;
-  final double likelihood;
-  final bool ok;
-}
-
-class FrameMetrics {
-  const FrameMetrics({
-    required this.luma,
-    required this.faces,
-    required this.poses,
-    required this.landmarks,
-    required this.issues,
-    required this.analysesPerSecond,
-  });
-  final LumaStats luma;
-  final int faces;
-  final int poses;
-  final List<LandmarkPoint> landmarks;
-  final Set<CaptureIssue> issues;
-  final int analysesPerSecond;
-}
-
-class FrameCheck {
-  const FrameCheck({required this.issues, required this.at, required this.metrics});
-  final Set<CaptureIssue> issues;
-  final DateTime at;
-  final FrameMetrics metrics;
-
-  CaptureIssue? get topIssue {
-    for (final issue in CaptureIssue.values) {
-      if (issues.contains(issue)) return issue;
-    }
-    return null;
-  }
-}
-
-/// Yes/no quality gate. Never used for movement analysis.
-class FrameQualityAnalyzer {
-  FrameQualityAnalyzer(this._config)
+/// ML Kit pose + face detection plus luma stats.
+class MlKitFrameAnalyzer implements FrameAnalyzer {
+  MlKitFrameAnalyzer(this._config)
       : _pose = PoseDetector(
           options: PoseDetectorOptions(
             mode: PoseDetectionMode.stream,
@@ -107,6 +54,7 @@ class FrameQualityAnalyzer {
   /// Everything before the first `await` runs synchronously inside the camera
   /// callback. The camera reuses the frame buffer once the callback returns,
   /// so brightness is computed and the bytes are copied first.
+  @override
   Future<FrameCheck?> analyze(CameraImage image) async {
     final now = DateTime.now();
     if (_busy || now.difference(_lastRun) < _config.analysisInterval) {
@@ -161,6 +109,7 @@ class FrameQualityAnalyzer {
     }
   }
 
+  @override
   Future<void> close() async {
     await _pose.close();
     await _faces.close();

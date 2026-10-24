@@ -4,24 +4,34 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 
-import 'capture_issue.dart';
-import 'capture_state.dart';
-import 'config.dart';
-import 'frame_quality_analyzer.dart';
-import 'quality_timer.dart';
-import 'storage.dart';
-import 'uploader.dart';
+import '../data/file_capture_storage.dart';
+import '../data/mlkit_frame_analyzer.dart';
+import '../domain/capture_issue.dart';
+import '../domain/capture_state.dart';
+import '../domain/capture_storage.dart';
+import '../domain/config.dart';
+import '../domain/frame_analyzer.dart';
+import '../domain/frame_metrics.dart';
+import '../domain/quality_timer.dart';
+import '../domain/uploader.dart';
 
 /// Owned by the capture screen's State. Its lifetime IS the widget's lifetime.
 class MovementCaptureController extends ChangeNotifier {
   MovementCaptureController({
     required this.config,
     required MovementUploader uploader,
+    CaptureStorage storage = const FileCaptureStorage(),
+    FrameAnalyzer Function(MovementCaptureConfig config) analyzerFactory =
+        MlKitFrameAnalyzer.new,
   })  : _uploader = uploader,
+        _storage = storage,
+        _analyzerFactory = analyzerFactory,
         _quality = QualityTimer(grace: config.violationGrace);
 
   final MovementCaptureConfig config;
   final MovementUploader _uploader;
+  final CaptureStorage _storage;
+  final FrameAnalyzer Function(MovementCaptureConfig) _analyzerFactory;
   final QualityTimer _quality;
 
   /// Latest analysis numbers, for the debug overlay.
@@ -32,7 +42,7 @@ class MovementCaptureController extends ChangeNotifier {
 
   CameraController? _camera;
   CameraController? get camera => _camera;
-  FrameQualityAnalyzer? _analyzer;
+  FrameAnalyzer? _analyzer;
 
   // `_epoch` changes with every phase, so ML results computed for an older
   // phase are thrown away.
@@ -69,7 +79,7 @@ class MovementCaptureController extends ChangeNotifier {
     _starting = true;
     _setState(const Initializing());
     try {
-      await MovementCaptureStorage.purgeAll(); // leftovers from a crash or kill
+      await _storage.purgeAll(); // leftovers from a crash or kill
       final cameras = await availableCameras();
       final external = cameras
           .where((c) => c.lensDirection == CameraLensDirection.external)
@@ -94,7 +104,7 @@ class MovementCaptureController extends ChangeNotifier {
         return;
       }
       cam.addListener(_onCameraValue);
-      _analyzer = FrameQualityAnalyzer(config);
+      _analyzer = _analyzerFactory(config);
       await _beginChecking();
     } on CameraException catch (e) {
       debugPrint('movement_capture: init failed ${e.code} ${e.description}');
@@ -252,7 +262,7 @@ class MovementCaptureController extends ChangeNotifier {
     try {
       _stopRecordingTimers();
       final raw = await cam.stopVideoRecording();
-      await MovementCaptureStorage.deletePath(raw.path);
+      await _storage.deletePath(raw.path);
       _restarts++;
     } on CameraException catch (e) {
       debugPrint('movement_capture: abort failed ${e.code}');
@@ -281,7 +291,7 @@ class MovementCaptureController extends ChangeNotifier {
       final raw = await cam.stopVideoRecording();
       debugPrint('movement_capture: raw file at ${raw.path}');
       _newPhase();
-      _video = await MovementCaptureStorage.adopt(raw);
+      _video = await _storage.adopt(raw.path);
     } on CameraException catch (e) {
       debugPrint('movement_capture: finish failed ${e.code}');
       _busyTransition = false;
@@ -317,7 +327,7 @@ class MovementCaptureController extends ChangeNotifier {
       );
       if (cancellation.isCancelled) return;
       if (id.isEmpty) throw StateError('Uploader returned an empty id');
-      await MovementCaptureStorage.deletePath(file.path);
+      await _storage.deletePath(file.path);
       _video = null;
       _setState(Completed(id));
     } catch (e) {
@@ -397,7 +407,8 @@ class MovementCaptureController extends ChangeNotifier {
     final epoch = _epoch;
     _frameWatchdog = Timer(const Duration(seconds: 3), () {
       if (epoch == _epoch && !_frameSeenThisPhase && !_disposed) {
-        debugPrint('movement_capture: no frames for 3 s in ${_state.runtimeType}');
+        debugPrint(
+            'movement_capture: no frames for 3 s in ${_state.runtimeType}');
         unawaited(_fail(CameraFailure.streamUnsupported));
       }
     });
@@ -434,7 +445,7 @@ class MovementCaptureController extends ChangeNotifier {
     if (cam == null || !cam.value.isRecordingVideo) return;
     try {
       final raw = await cam.stopVideoRecording();
-      await MovementCaptureStorage.deletePath(raw.path);
+      await _storage.deletePath(raw.path);
     } catch (_) {
       // purgeAll removes anything left behind
     }
@@ -448,7 +459,7 @@ class MovementCaptureController extends ChangeNotifier {
       _cancelAllTimers();
       await _stopAndDeleteActiveRecording();
       await _releaseCamera();
-      await MovementCaptureStorage.purgeAll();
+      await _storage.purgeAll();
       _restarts = 0;
       _setState(CameraUnavailable(reason));
     } finally {
@@ -487,8 +498,8 @@ class MovementCaptureController extends ChangeNotifier {
     await _releaseCamera();
     final video = _video;
     _video = null;
-    if (video != null) await MovementCaptureStorage.deletePath(video.path);
-    await MovementCaptureStorage.purgeAll();
+    if (video != null) await _storage.deletePath(video.path);
+    await _storage.purgeAll();
   }
 
   void _setState(CaptureState next) {

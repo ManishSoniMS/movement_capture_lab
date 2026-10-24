@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
-import 'frame_quality_analyzer.dart';
+import '../domain/frame_metrics.dart';
 
 /// Live numbers for on-site threshold tuning.
 class DebugMetricsPanel extends StatelessWidget {
@@ -37,8 +37,8 @@ class DebugMetricsPanel extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             child: Text(
               lines.join('\n'),
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                  fontFeatures: const [FontFeature.tabularFigures()]),
             ),
           ),
         );

@@ -2,7 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movement_capture/movement_capture.dart';
-import 'package:movement_capture/src/luma_stats.dart';
+import 'package:movement_capture/src/domain/luma_stats.dart';
 
 const _w = 160, _h = 120;
 
@@ -23,11 +23,13 @@ void main() {
   final config = MovementCaptureConfig();
 
   test('uniform dark frame is tooDark', () {
-    expect(_stats(_frame((_, __) => 30)).issueFor(config), CaptureIssue.tooDark);
+    expect(
+        _stats(_frame((_, __) => 30)).issueFor(config), CaptureIssue.tooDark);
   });
 
   test('uniform bright frame is tooBright', () {
-    expect(_stats(_frame((_, __) => 230)).issueFor(config), CaptureIssue.tooBright);
+    expect(_stats(_frame((_, __) => 230)).issueFor(config),
+        CaptureIssue.tooBright);
   });
 
   test('evenly lit frame has no issue', () {
@@ -37,8 +39,8 @@ void main() {
   test('dark centre on bright surroundings is backlit', () {
     final cx0 = (_w * 0.30).round(), cx1 = (_w * 0.70).round();
     final cy0 = (_h * 0.25).round(), cy1 = (_h * 0.75).round();
-    final s = _stats(_frame((x, y) =>
-        (x >= cx0 && x < cx1 && y >= cy0 && y < cy1) ? 50 : 200));
+    final s = _stats(_frame(
+        (x, y) => (x >= cx0 && x < cx1 && y >= cy0 && y < cy1) ? 50 : 200));
     expect(s.mean, inInclusiveRange(60, 200)); // not caught by the mean rule
     expect(s.issueFor(config), CaptureIssue.backlit);
   });

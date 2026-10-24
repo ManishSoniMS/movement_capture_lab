@@ -1,35 +1,44 @@
 import 'dart:io';
 
-import 'package:camera/camera.dart';
 import 'package:path_provider/path_provider.dart';
 
-/// The only code that touches capture files on disk.
-abstract final class MovementCaptureStorage {
+import '../domain/capture_storage.dart';
+
+/// Stores captures under `<cache>/movement_capture/`.
+class FileCaptureStorage implements CaptureStorage {
+  /// [cacheDir] defaults to the platform temporary directory; tests override it.
+  const FileCaptureStorage(
+      {Future<Directory> Function() cacheDir = getTemporaryDirectory})
+      : _cacheDir = cacheDir;
+
+  final Future<Directory> Function() _cacheDir;
+
   static const String _folder = 'movement_capture';
 
-  static Future<Directory> _sessionDir() async {
-    final tmp = await getTemporaryDirectory();
+  Future<Directory> _sessionDir() async {
+    final tmp = await _cacheDir();
     final dir = Directory('${tmp.path}${Platform.pathSeparator}$_folder');
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir;
   }
 
-  /// Moves the plugin's output into our folder so purgeAll always finds it.
-  static Future<File> adopt(XFile raw) async {
+  @override
+  Future<File> adopt(String rawPath) async {
     final dir = await _sessionDir();
     final target = '${dir.path}${Platform.pathSeparator}'
         'capture_${DateTime.now().millisecondsSinceEpoch}.mp4';
-    final source = File(raw.path);
+    final source = File(rawPath);
     try {
       return await source.rename(target);
     } on FileSystemException {
       final copy = await source.copy(target);
-      await deletePath(raw.path);
+      await deletePath(rawPath);
       return copy;
     }
   }
 
-  static Future<void> deletePath(String path) async {
+  @override
+  Future<void> deletePath(String path) async {
     try {
       final file = File(path);
       if (await file.exists()) await file.delete();
@@ -38,11 +47,10 @@ abstract final class MovementCaptureStorage {
     }
   }
 
-  /// Deletes our folder and any stray .mp4 in the cache root (crash/kill
-  /// mid-recording). NEVER call while recording.
-  static Future<void> purgeAll() async {
+  @override
+  Future<void> purgeAll() async {
     try {
-      final tmp = await getTemporaryDirectory();
+      final tmp = await _cacheDir();
       final dir = Directory('${tmp.path}${Platform.pathSeparator}$_folder');
       if (await dir.exists()) await dir.delete(recursive: true);
       await for (final entity in tmp.list(followLinks: false)) {

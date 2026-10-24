@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'capture_issue.dart';
-import 'capture_state.dart';
+import '../domain/capture_issue.dart';
+import '../domain/capture_state.dart';
 
 /// Every user-facing string. English defaults; the host passes translations.
 /// Templates use {elapsed}, {total} and {percent} placeholders.

@@ -3,8 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:movement_capture/movement_capture.dart';
 
 import 'camera_info_page.dart';
-import 'lab_settings.dart';
-import 'uploaders.dart';
+import '../domain/lab_settings.dart';
+import '../data/uploaders.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -50,8 +50,8 @@ class _HomePageState extends State<HomePage> {
       showDebugOverlay: _s.debugOverlay,
     );
     if (!mounted) return;
-    setState(() => _log.insert(
-        0, '${TimeOfDay.now().format(context)}  ${id ?? 'cancelled'}\n$settings'));
+    setState(() => _log.insert(0,
+        '${TimeOfDay.now().format(context)}  ${id ?? 'cancelled'}\n$settings'));
   }
 
   void _snack(String text) =>
@@ -100,19 +100,18 @@ class _HomePageState extends State<HomePage> {
         padding: const EdgeInsets.only(bottom: 120),
         children: [
           const _Section('Timing'),
-          _slider('Max duration (s, values above 30 are clamped)', _s.maxDurationS,
-              5, 45, 40, _int, (v) => _s.maxDurationS = v),
+          _slider('Max duration (s, values above 30 are clamped)',
+              _s.maxDurationS, 5, 45, 40, _int, (v) => _s.maxDurationS = v),
           _slider('Countdown (s)', _s.countdownS, 1, 5, 4, _int,
               (v) => _s.countdownS = v),
           _slider('Stable before start (ms)', _s.stableMs, 500, 3000, 25, _int,
               (v) => _s.stableMs = v),
           _slider('Failure grace (ms)', _s.graceMs, 100, 1500, 28, _int,
               (v) => _s.graceMs = v),
-          _slider('Auto restarts before operator', _s.maxRestarts, 0, 6, 6, _int,
-              (v) => _s.maxRestarts = v),
+          _slider('Auto restarts before operator', _s.maxRestarts, 0, 6, 6,
+              _int, (v) => _s.maxRestarts = v),
           _slider('Analysis interval (ms)', _s.analysisIntervalMs, 50, 500, 18,
               _int, (v) => _s.analysisIntervalMs = v),
-
           const _Section('Camera'),
           ListTile(
             title: const Text('Rotation for analysis'),
@@ -139,13 +138,11 @@ class _HomePageState extends State<HomePage> {
                   setState(() => _s.resolution = v ?? ResolutionPreset.high),
             ),
           ),
-
           const _Section('Framing'),
           _slider('Safe-zone inset', _s.safeZoneInset, 0, 0.2, 40,
               (v) => v.toStringAsFixed(3), (v) => _s.safeZoneInset = v),
           _slider('Min body-point likelihood', _s.minLikelihood, 0.1, 0.95, 17,
               _dec, (v) => _s.minLikelihood = v),
-
           const _Section('Lighting'),
           _slider('Too dark below', _s.minLuma, 20, 120, 100, _int,
               (v) => _s.minLuma = v),
@@ -153,9 +150,8 @@ class _HomePageState extends State<HomePage> {
               (v) => _s.maxLuma = v),
           _slider('Max clipped share', _s.maxClipped, 0.05, 0.6, 55, _dec,
               (v) => _s.maxClipped = v),
-          _slider('Backlit below centre/border', _s.minCenterToBorder, 0.3, 0.95,
-              65, _dec, (v) => _s.minCenterToBorder = v),
-
+          _slider('Backlit below centre/border', _s.minCenterToBorder, 0.3,
+              0.95, 65, _dec, (v) => _s.minCenterToBorder = v),
           const _Section('Upload'),
           for (final mode in UploaderMode.values)
             RadioListTile<UploaderMode>(
@@ -165,7 +161,8 @@ class _HomePageState extends State<HomePage> {
               title: Text(switch (mode) {
                 UploaderMode.mock => 'Mock (succeeds)',
                 UploaderMode.mockFail => 'Mock (always fails)',
-                UploaderMode.inspection => 'Keep clip for inspection (lab only)',
+                UploaderMode.inspection =>
+                  'Keep clip for inspection (lab only)',
                 UploaderMode.http => 'Real HTTP endpoint',
               }),
             ),
@@ -185,12 +182,12 @@ class _HomePageState extends State<HomePage> {
               padding: const EdgeInsets.all(16),
               child: TextField(
                 controller: _token,
-                decoration: const InputDecoration(labelText: 'Bearer token (optional)'),
+                decoration:
+                    const InputDecoration(labelText: 'Bearer token (optional)'),
                 obscureText: true,
               ),
             ),
           ],
-
           const _Section('Tools'),
           SwitchListTile(
             title: const Text('Debug overlay'),
@@ -221,7 +218,6 @@ class _HomePageState extends State<HomePage> {
               _snack('Deleted $n inspection clip(s)');
             },
           ),
-
           const _Section('Results'),
           if (_log.isEmpty)
             const ListTile(title: Text('No runs yet'))

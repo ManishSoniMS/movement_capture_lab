@@ -1,4 +1,4 @@
-# movement_capture_lab
+# Movement Capture Lab
 
 A new Flutter project.
 

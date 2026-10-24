@@ -4,12 +4,12 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'capture_state.dart';
-import 'config.dart';
+import '../domain/capture_state.dart';
+import '../domain/config.dart';
+import '../domain/uploader.dart';
 import 'controller.dart';
 import 'customization.dart';
 import 'debug_overlay.dart';
-import 'uploader.dart';
 
 /// Pops with the analysis id on success, or null on cancel.
 class MovementCaptureScreen extends StatefulWidget {

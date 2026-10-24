@@ -5,8 +5,8 @@ export 'package:camera/camera.dart'
     show CameraDescription, CameraLensDirection, ResolutionPreset;
 
 export 'src/api.dart';
-export 'src/capture_issue.dart';
-export 'src/config.dart';
-export 'src/customization.dart';
-export 'src/screen.dart' show MovementCaptureScreen;
-export 'src/uploader.dart';
+export 'src/domain/capture_issue.dart';
+export 'src/domain/config.dart';
+export 'src/domain/uploader.dart';
+export 'src/presentation/customization.dart';
+export 'src/presentation/screen.dart' show MovementCaptureScreen;

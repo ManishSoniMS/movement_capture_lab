@@ -1,11 +1,11 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
-import 'config.dart';
-import 'customization.dart';
-import 'screen.dart';
-import 'storage.dart';
-import 'uploader.dart';
+import 'data/file_capture_storage.dart';
+import 'domain/config.dart';
+import 'domain/uploader.dart';
+import 'presentation/customization.dart';
+import 'presentation/screen.dart';
 
 abstract final class MovementCapture {
   /// Opens the capture screen. Completes with the uploader's analysis id,
@@ -35,7 +35,7 @@ abstract final class MovementCapture {
 
   /// Deletes every capture file. Hosts call this on logout and before login.
   /// Never call while a capture screen is open.
-  static Future<void> purgeAll() => MovementCaptureStorage.purgeAll();
+  static Future<void> purgeAll() => const FileCaptureStorage().purgeAll();
 
   /// For diagnostics screens.
   static Future<List<CameraDescription>> listCameras() => availableCameras();
