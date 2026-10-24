@@ -16,8 +16,14 @@ import '../domain/frame_analyzer.dart';
 import '../domain/frame_metrics.dart';
 import '../domain/quality_timer.dart';
 import '../domain/uploader.dart';
+import 'serial_queue.dart';
 
 /// Owned by the capture screen's State. Its lifetime IS the widget's lifetime.
+///
+/// Concurrency rule: every operation that opens, closes, records with or
+/// releases the camera runs through [_queue], one at a time. Public methods
+/// and timer/frame callbacks enqueue; code already inside the queue calls the
+/// `...Impl` methods directly and never enqueues again.
 class MovementCaptureController extends ChangeNotifier {
   MovementCaptureController({
     required this.config,
@@ -38,6 +44,7 @@ class MovementCaptureController extends ChangeNotifier {
   final FrameAnalyzer Function(MovementCaptureConfig,
       {required int Function() rotationDegrees}) _analyzerFactory;
   final QualityTimer _quality;
+  final SerialQueue _queue = SerialQueue();
 
   /// Fired only when the operator picks a camera from the list.
   final void Function(CameraDescription camera)? onCameraChanged;
@@ -66,24 +73,26 @@ class MovementCaptureController extends ChangeNotifier {
       !_choices.any((c) => c.isExternal);
 
   /// The camera list may be opened in these states only.
-  bool get canChangeCamera {
-    if (_starting || _busyTransition) return false;
-    return switch (_state) {
-      Checking(armed: false) => true,
-      NeedsOperator() => true,
-      CameraUnavailable() => true,
-      _ => false,
-    };
-  }
+  bool get canChangeCamera =>
+      !_starting && !_busyTransition && _stateAllowsCameraChange;
+
+  bool get _stateAllowsCameraChange => switch (_state) {
+        Checking(armed: false) => true,
+        NeedsOperator() => true,
+        CameraUnavailable() => true,
+        _ => false,
+      };
 
   // `_epoch` changes with every phase, so ML results computed for an older
   // phase are thrown away.
   int _epoch = 0;
+  int _countdownId = 0;
   bool _busyTransition = false;
+  bool _transitionQueued = false;
   bool _starting = false;
   bool _failing = false;
   bool _disposed = false;
-  bool _tornDown = false;
+  bool _suspended = false;
   bool _frameSeenThisPhase = false;
   bool _liveChecks = true;
   int _restarts = 0;
@@ -112,17 +121,124 @@ class MovementCaptureController extends ChangeNotifier {
     DeviceOrientation.landscapeRight: 270,
   };
 
+  // ------------------------------------------------------------- queueing
+
+  /// Enqueues [operation]. Unexpected errors are logged, never thrown, so one
+  /// failure cannot block later operations or crash the app.
+  Future<void> _serial(Future<void> Function() operation) {
+    return _queue.run(operation).catchError((Object e, StackTrace s) {
+      debugPrint('movement_capture: operation failed: $e\n$s');
+    });
+  }
+
+  /// For timers and callbacks: fail only if still in the same phase (and
+  /// still on the same camera, when given).
+  void _requestFail(
+    CameraFailure reason, {
+    int? epoch,
+    CameraController? camera,
+  }) {
+    unawaited(_serial(() async {
+      if (_disposed) return;
+      if (epoch != null && epoch != _epoch) return;
+      if (camera != null && !identical(camera, _camera)) return;
+      await _failImpl(reason);
+    }));
+  }
+
   // ---------------------------------------------------------------- public
 
   /// Lists cameras and opens the best one: the current/preferred camera if
   /// still connected, else the first USB camera, else front, else back.
-  Future<void> start() async {
-    if (_disposed || _starting) return;
+  Future<void> start() => _serial(_startImpl);
+
+  /// Operator picked a camera from the list.
+  Future<void> selectCamera(CameraChoice choice) =>
+      _serial(() => _selectImpl(choice));
+
+  /// Re-reads the camera list (e.g. after plugging in a webcam). Read-only,
+  /// so it does not need the queue. Does not change the camera in use.
+  Future<void> refreshCameras() async {
+    if (_disposed) return;
+    try {
+      await _enumerate();
+    } on CameraException catch (e) {
+      debugPrint('movement_capture: refresh failed ${e.code}');
+    }
+  }
+
+  /// Operator tapped "Start recording". Touches no camera, so not queued.
+  void startRequested() {
+    final s = _state;
+    if (s is Checking && !s.armed) {
+      _quality.restartGoodWindow(); // fresh stability window from now
+      _setState(Checking(issue: s.issue, armed: true));
+    }
+  }
+
+  /// Operator tapped "Try again" on the NeedsOperator panel.
+  Future<void> operatorRetry() => _serial(() async {
+        if (_disposed || _state is! NeedsOperator) return;
+        _restarts = 0;
+        await _beginChecking(armed: true);
+      });
+
+  /// Re-lists cameras and reopens: the same camera if still connected,
+  /// otherwise the default rule (a missing USB camera falls back to built-in).
+  Future<void> retryCamera() => _serial(() async {
+        if (_disposed || _state is! CameraUnavailable) return;
+        await _releaseCamera();
+        await _startImpl();
+      });
+
+  Future<void> retryUpload() => _serial(() async {
+        if (_disposed || _state is! UploadFailed) return;
+        await _uploadVideo();
+      });
+
+  /// App went to the background (paused/hidden): drop everything except an
+  /// upload. Never call this for `inactive`.
+  Future<void> suspend() => _serial(() async {
+        if (_disposed) return;
+        final s = _state;
+        if (s is Uploading || s is UploadFailed || s is Completed) return;
+        if (_camera == null) return;
+        _newPhase();
+        _cancelAllTimers();
+        await _stopAndDeleteActiveRecording();
+        await _releaseCamera();
+        _restarts = 0;
+        _suspended = true;
+        _setState(const Initializing());
+      });
+
+  /// App came back: reopen only if [suspend] released the camera.
+  Future<void> resume() => _serial(() async {
+        if (_disposed || !_suspended) return;
+        _suspended = false;
+        await _startImpl();
+      });
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _cancelAllTimers();
+    _uploadCancellation?.cancel(); // don't make teardown wait for an upload
+    unawaited(_serial(_teardownImpl));
+    metrics.dispose();
+    super.dispose();
+  }
+
+  // ------------------------------------------------- queued implementations
+
+  Future<void> _startImpl() async {
+    if (_disposed) return;
     _starting = true;
     _setState(const Initializing());
     try {
       await _storage.purgeAll(); // leftovers from a crash or kill
       final choices = await _enumerate();
+      if (_disposed) return;
       final choice = pickDefaultCamera(
         choices,
         preferredId: _selected?.id ?? config.preferredCameraId,
@@ -138,12 +254,12 @@ class MovementCaptureController extends ChangeNotifier {
       _setState(CameraUnavailable(_failureFor(e)));
     } finally {
       _starting = false;
+      if (!_disposed) notifyListeners();
     }
   }
 
-  /// Operator picked a camera from the list.
-  Future<void> selectCamera(CameraChoice choice) async {
-    if (_disposed || !canChangeCamera) return;
+  Future<void> _selectImpl(CameraChoice choice) async {
+    if (_disposed || !_stateAllowsCameraChange) return;
     if (choice.id == _selected?.id && _camera != null && _state is Checking) {
       return; // already in use
     }
@@ -156,81 +272,15 @@ class MovementCaptureController extends ChangeNotifier {
       _restarts = 0;
       await _storage.purgeAll(); // safe: nothing is recording
       await _open(choice);
-      onCameraChanged?.call(choice.description);
+      if (!_disposed) onCameraChanged?.call(choice.description);
     } on CameraException catch (e) {
       debugPrint('movement_capture: switch to ${choice.id} failed ${e.code}');
       await _releaseCamera();
       _setState(CameraUnavailable(_failureFor(e)));
     } finally {
       _starting = false;
+      if (!_disposed) notifyListeners();
     }
-  }
-
-  /// Re-reads the camera list (e.g. after plugging in a webcam). Does not
-  /// change the camera in use.
-  Future<void> refreshCameras() async {
-    if (_disposed) return;
-    try {
-      await _enumerate();
-    } on CameraException catch (e) {
-      debugPrint('movement_capture: refresh failed ${e.code}');
-    }
-  }
-
-  /// Operator tapped "Start recording".
-  void startRequested() {
-    final s = _state;
-    if (s is Checking && !s.armed) {
-      _quality.restartGoodWindow(); // fresh stability window from now
-      _setState(Checking(issue: s.issue, armed: true));
-    }
-  }
-
-  /// Operator tapped "Try again" on the NeedsOperator panel.
-  Future<void> operatorRetry() async {
-    if (_state is! NeedsOperator) return;
-    _restarts = 0;
-    await _beginChecking(armed: true);
-  }
-
-  /// Re-lists cameras and reopens: the same camera if still connected,
-  /// otherwise the default rule (a missing USB camera falls back to built-in).
-  Future<void> retryCamera() async {
-    if (_state is! CameraUnavailable) return;
-    await _releaseCamera();
-    await start();
-  }
-
-  Future<void> retryUpload() async {
-    if (_state is! UploadFailed) return;
-    await _uploadVideo();
-  }
-
-  /// App went to background or inactive: drop everything except an upload.
-  Future<void> suspend() async {
-    if (_disposed) return;
-    final s = _state;
-    if (s is Uploading || s is UploadFailed || s is Completed) return;
-    if (_camera == null) return;
-    _newPhase();
-    _cancelAllTimers();
-    await _stopAndDeleteActiveRecording();
-    await _releaseCamera();
-    _restarts = 0;
-    _setState(const Initializing());
-  }
-
-  Future<void> resume() async {
-    if (_disposed) return;
-    if (_state is Initializing && _camera == null) await start();
-  }
-
-  @override
-  void dispose() {
-    _disposed = true;
-    unawaited(_teardown());
-    metrics.dispose();
-    super.dispose();
   }
 
   // ---------------------------------------------------------- camera setup
@@ -255,9 +305,14 @@ class MovementCaptureController extends ChangeNotifier {
           _isIOS ? ImageFormatGroup.bgra8888 : ImageFormatGroup.nv21,
     );
     _camera = cam;
-    await cam.initialize();
-    if (_disposed) {
-      await cam.dispose();
+    await cam.initialize(); // may show the permission prompt
+    // Nothing else can release `cam` meanwhile (serial queue), but the screen
+    // may have been closed while the prompt was up.
+    if (_disposed || !identical(_camera, cam)) {
+      if (identical(_camera, cam)) _camera = null;
+      try {
+        await cam.dispose();
+      } catch (_) {}
       return;
     }
     cam.addListener(_onCameraValue);
@@ -302,7 +357,7 @@ class MovementCaptureController extends ChangeNotifier {
       _armWatchdog();
     } on CameraException catch (e) {
       debugPrint('movement_capture: image stream failed ${e.code}');
-      await _fail(CameraFailure.other);
+      await _failImpl(CameraFailure.other);
     }
   }
 
@@ -310,14 +365,21 @@ class MovementCaptureController extends ChangeNotifier {
     var left = config.countdown.inSeconds;
     if (left < 1) left = 1;
     if (left > 10) left = 10;
+    final id = ++_countdownId;
     _setState(CountingDown(left));
     _countdownTimer?.cancel();
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (id != _countdownId || _disposed) {
+        t.cancel();
+        return;
+      }
       left--;
       if (left <= 0) {
         t.cancel();
         _countdownTimer = null;
-        unawaited(_startRecording());
+        if (_transitionQueued) return;
+        _transitionQueued = true;
+        unawaited(_serial(() => _startRecordingImpl(id)));
       } else {
         _setState(CountingDown(left));
       }
@@ -325,15 +387,22 @@ class MovementCaptureController extends ChangeNotifier {
   }
 
   void _cancelCountdown(CaptureIssue issue) {
+    _countdownId++; // invalidates any queued start for the old countdown
     _countdownTimer?.cancel();
     _countdownTimer = null;
     _quality.restartGoodWindow();
     _setState(Checking(issue: issue, armed: true));
   }
 
-  Future<void> _startRecording() async {
+  Future<void> _startRecordingImpl(int countdownId) async {
+    _transitionQueued = false;
     final cam = _camera;
-    if (cam == null || _state is! CountingDown || _busyTransition) return;
+    if (_disposed ||
+        cam == null ||
+        countdownId != _countdownId ||
+        _state is! CountingDown) {
+      return;
+    }
     _busyTransition = true;
     try {
       // startVideoRecording(onAvailable:) starts its own image stream and
@@ -351,6 +420,7 @@ class MovementCaptureController extends ChangeNotifier {
         _liveChecks = false;
         await cam.startVideoRecording();
       }
+      if (_disposed) return; // teardown (queued next) deletes the file
       _capturedAtUtc = DateTime.now().toUtc();
       _recordClock
         ..reset()
@@ -360,8 +430,12 @@ class MovementCaptureController extends ChangeNotifier {
         total: config.maxDuration,
         liveChecks: _liveChecks,
       ));
-      _maxDurationTimer =
-          Timer(config.maxDuration, () => unawaited(_finishRecording()));
+      final recordingEpoch = _epoch;
+      _maxDurationTimer = Timer(config.maxDuration, () {
+        if (_transitionQueued || _disposed) return;
+        _transitionQueued = true;
+        unawaited(_serial(() => _finishRecordingImpl(recordingEpoch)));
+      });
       _ticker = Timer.periodic(const Duration(milliseconds: 250), (_) {
         if (_state is! Recording) return;
         final e = _recordClock.elapsed;
@@ -375,18 +449,20 @@ class MovementCaptureController extends ChangeNotifier {
     } on CameraException catch (e) {
       debugPrint('movement_capture: start recording failed ${e.code}');
       _busyTransition = false;
-      await _fail(config.allowRecordingWithoutLiveChecks
+      await _failImpl(config.allowRecordingWithoutLiveChecks
           ? CameraFailure.other
           : CameraFailure.streamUnsupported);
-      return;
     } finally {
       _busyTransition = false;
     }
   }
 
-  Future<void> _abortRecording(CaptureIssue issue) async {
+  Future<void> _abortRecordingImpl(CaptureIssue issue, int epoch) async {
+    _transitionQueued = false;
     final cam = _camera;
-    if (cam == null || _busyTransition || _state is! Recording) return;
+    if (_disposed || cam == null || epoch != _epoch || _state is! Recording) {
+      return;
+    }
     _busyTransition = true;
     try {
       _stopRecordingTimers();
@@ -396,11 +472,12 @@ class MovementCaptureController extends ChangeNotifier {
     } on CameraException catch (e) {
       debugPrint('movement_capture: abort failed ${e.code}');
       _busyTransition = false;
-      await _fail(CameraFailure.other);
+      await _failImpl(CameraFailure.other);
       return;
     } finally {
       _busyTransition = false;
     }
+    if (_disposed) return;
 
     if (_restarts > config.maxRestarts) {
       _newPhase();
@@ -410,9 +487,12 @@ class MovementCaptureController extends ChangeNotifier {
     await _beginChecking(interruptedBy: issue, armed: true);
   }
 
-  Future<void> _finishRecording() async {
+  Future<void> _finishRecordingImpl(int epoch) async {
+    _transitionQueued = false;
     final cam = _camera;
-    if (cam == null || _busyTransition || _state is! Recording) return;
+    if (_disposed || cam == null || epoch != _epoch || _state is! Recording) {
+      return;
+    }
     _busyTransition = true;
     try {
       _stopRecordingTimers();
@@ -424,11 +504,12 @@ class MovementCaptureController extends ChangeNotifier {
     } on CameraException catch (e) {
       debugPrint('movement_capture: finish failed ${e.code}');
       _busyTransition = false;
-      await _fail(CameraFailure.other);
+      await _failImpl(CameraFailure.other);
       return;
     } finally {
       _busyTransition = false;
     }
+    if (_disposed) return; // teardown deletes _video
     await _releaseCamera(); // not needed for the upload
     await _uploadVideo();
   }
@@ -459,13 +540,13 @@ class MovementCaptureController extends ChangeNotifier {
         },
         cancellation: cancellation,
       );
-      if (cancellation.isCancelled) return;
+      if (cancellation.isCancelled || _disposed) return;
       if (id.isEmpty) throw StateError('Uploader returned an empty id');
       await _storage.deletePath(file.path);
       _video = null;
       _setState(Completed(id));
     } catch (e) {
-      if (cancellation.isCancelled) return;
+      if (cancellation.isCancelled || _disposed) return;
       debugPrint('movement_capture: upload failed $e');
       _setState(const UploadFailed());
     }
@@ -476,17 +557,23 @@ class MovementCaptureController extends ChangeNotifier {
   void _onFrame(CameraImage image) {
     _frameSeenThisPhase = true;
     final analyzer = _analyzer;
-    if (analyzer == null || _busyTransition || _disposed) return;
+    if (analyzer == null || _busyTransition || _transitionQueued || _disposed) {
+      return;
+    }
     final epoch = _epoch;
     analyzer.analyze(image).then((check) {
-      if (check == null || epoch != _epoch || _busyTransition || _disposed) {
+      if (check == null ||
+          epoch != _epoch ||
+          _busyTransition ||
+          _transitionQueued ||
+          _disposed) {
         return;
       }
       _onCheck(check);
     }).catchError((Object error) {
       if (error is UnsupportedFrameFormat) {
         debugPrint('movement_capture: $error');
-        unawaited(_fail(CameraFailure.streamUnsupported));
+        _requestFail(CameraFailure.streamUnsupported, epoch: epoch);
       }
       // Other errors (e.g. detector closed during teardown) are ignored.
     });
@@ -519,7 +606,12 @@ class MovementCaptureController extends ChangeNotifier {
       case CountingDown():
         if (r.confirmedBad) _cancelCountdown(r.lastIssue!);
       case Recording(liveChecks: true):
-        if (r.confirmedBad) unawaited(_abortRecording(r.lastIssue!));
+        if (r.confirmedBad && !_transitionQueued) {
+          _transitionQueued = true;
+          final issue = r.lastIssue!;
+          final epoch = _epoch;
+          unawaited(_serial(() => _abortRecordingImpl(issue, epoch)));
+        }
       default:
         break;
     }
@@ -531,7 +623,7 @@ class MovementCaptureController extends ChangeNotifier {
     final s = _state;
     if (s is CameraUnavailable || s is Uploading || s is Completed) return;
     debugPrint('movement_capture: camera error ${cam.value.errorDescription}');
-    unawaited(_fail(CameraFailure.other)); // e.g. webcam unplugged
+    _requestFail(CameraFailure.other, camera: cam); // e.g. webcam unplugged
   }
 
   /// No frame within 3 s of a phase starting: during recording, continue
@@ -555,7 +647,7 @@ class MovementCaptureController extends ChangeNotifier {
       }
       debugPrint(
           'movement_capture: no frames for 3 s in ${_state.runtimeType}');
-      unawaited(_fail(CameraFailure.streamUnsupported));
+      _requestFail(CameraFailure.streamUnsupported, epoch: epoch);
     });
   }
 
@@ -578,6 +670,7 @@ class MovementCaptureController extends ChangeNotifier {
   }
 
   void _cancelAllTimers() {
+    _countdownId++;
     _countdownTimer?.cancel();
     _countdownTimer = null;
     _stopRecordingTimers();
@@ -596,7 +689,7 @@ class MovementCaptureController extends ChangeNotifier {
     }
   }
 
-  Future<void> _fail(CameraFailure reason) async {
+  Future<void> _failImpl(CameraFailure reason) async {
     if (_disposed || _failing) return;
     _failing = true;
     try {
@@ -633,12 +726,9 @@ class MovementCaptureController extends ChangeNotifier {
     if (!_disposed) notifyListeners(); // preview disappears
   }
 
-  Future<void> _teardown() async {
-    if (_tornDown) return;
-    _tornDown = true;
+  Future<void> _teardownImpl() async {
     _newPhase();
     _cancelAllTimers();
-    _uploadCancellation?.cancel();
     await _stopAndDeleteActiveRecording();
     await _releaseCamera();
     final video = _video;

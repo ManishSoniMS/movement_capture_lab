@@ -62,12 +62,16 @@ class _MovementCaptureScreenState extends State<MovementCaptureScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
-      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
+        // Really in the background: release the camera.
         unawaited(_controller.suspend());
       case AppLifecycleState.resumed:
         unawaited(_controller.resume());
-      default:
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.detached:
+        // `inactive` also fires for the camera permission prompt, Control
+        // Center, the notification shade and call banners. Keep the camera.
         break;
     }
   }

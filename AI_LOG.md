@@ -23,3 +23,11 @@
 **Why:** PROMPT.md assumed flat files; mapped to the existing layers. Vendored copy came from the pub cache (resolved version is 0.10.3+1, not the prompt's example 0.11.1), so it matches what pub would resolve exactly. The patch is Swift (CameraPlugin.swift). iOS Info.plist and deployment target 15.5 were already in place. The rotation rule went into the pure `analysisRotationDegrees` so it is unit-tested.
 
 **Pros:** iOS frames are checked, no double-mirroring, no mp4 left on iOS, phones get a usable layout, server learns mirroring/live-check state. **Cons:** a vendored plugin copy must be re-patched on `camera` upgrades; controller recording-fallback and screen layout are not unit-tested (no camera gateway yet); nothing verified on a device (V21-V28 need iPad, iPhone, phone, low-end Android). No iOS build was run.
+
+## 2026-10-24: Fix "CameraController was used after being disposed" (PROMPT.md, Revision 4)
+
+**Touched:** new `presentation/serial_queue.dart` + `test/serial_queue_test.dart`; `controller.dart` (public camera ops now enqueue; `...Impl` methods run inside the queue; `_countdownId`, `_transitionQueued`, `_suspended`; `_requestFail(epoch:/camera:)` for timers and frame callbacks; `dispose()` cancels upload before queuing `_teardownImpl`; `_open` re-checks the camera after `initialize()`); `screen.dart` lifecycle (release only on `paused`/`hidden`, ignore `inactive`/`detached`). Edited in place, not replaced: the prompt's controller predates the `storage`/`analyzerFactory` DI and `analysisRotationDegrees`, so those were kept.
+
+**Why:** `inactive` fires for the permission prompt, so `suspend()` disposed the camera mid-`initialize()`. Overlapping async camera ops were the second cause; one serial queue plus epoch-stamped requests removes the overlap.
+
+**Pros:** no camera use-after-dispose, shade/Control Center no longer kills recording, resume only reopens what suspend released. **Cons:** queued ops add latency (e.g. camera switch waits for a running open); `_tornDown` flag dropped (teardown runs once via dispose). Controller flows still untested (no camera gateway); V29-V34 need iPad/Tab S9 FE and were NOT run. 49 package tests pass, package analyze clean, root analyze only the 3 known infos.
