@@ -8,7 +8,6 @@ import 'package:flutter/services.dart';
 import '../data/native_bridge.dart';
 import '../domain/camera_choice.dart';
 import '../domain/capture_state.dart';
-import '../domain/capture_step.dart';
 import '../domain/config.dart';
 import '../domain/result.dart';
 import '../domain/support_report.dart';
@@ -18,8 +17,8 @@ import 'customization.dart';
 import 'debug_overlay.dart';
 import 'skeleton_layer.dart';
 
-/// Pops with a [MovementCaptureResult]: completed on success, cancelled
-/// otherwise.
+/// Pops with a [MovementCaptureResult]: completed when every recorded step was
+/// uploaded, cancelled otherwise. Steps already uploaded keep their IDs.
 class MovementCaptureScreen extends StatefulWidget {
   const MovementCaptureScreen({
     super.key,
@@ -49,6 +48,7 @@ class MovementCaptureScreen extends StatefulWidget {
 class _MovementCaptureScreenState extends State<MovementCaptureScreen>
     with WidgetsBindingObserver {
   late final MovementCaptureController _controller;
+  bool _closing = false;
 
   @override
   void initState() {
@@ -90,22 +90,21 @@ class _MovementCaptureScreenState extends State<MovementCaptureScreen>
     WidgetsBinding.instance.removeObserver(this);
     SystemChrome.setPreferredOrientations(widget.config.restoreOrientations);
     unawaited(NativeBridge.setKeepScreenOn(false));
-    _controller.dispose(); // stops recording, cancels upload, deletes files
+    _controller.dispose(); // stops recording, cancels uploads, deletes files
     super.dispose();
   }
 
-  void _close([String? analysisId]) {
-    final result = analysisId == null
-        ? MovementCaptureResult.cancelled(widget.support)
-        : MovementCaptureResult(
-            status: MovementCaptureStatus.completed,
-            support: widget.support,
-            steps: [
-              CaptureStepResult(
-                  step: CaptureStep.fullBody, analysisId: analysisId),
-            ],
-          );
-    Navigator.of(context).pop(result);
+  void _close() {
+    if (_closing) return;
+    _closing = true;
+    final complete = _controller.state is SessionComplete;
+    Navigator.of(context).pop(MovementCaptureResult(
+      status: complete
+          ? MovementCaptureStatus.completed
+          : MovementCaptureStatus.cancelled,
+      support: widget.support,
+      steps: _controller.results,
+    ));
   }
 
   @override
@@ -129,7 +128,11 @@ class _MovementCaptureScreenState extends State<MovementCaptureScreen>
       builder: (context, _) {
         final state = _controller.state;
         return PopScope(
-          canPop: state is! Uploading,
+          canPop: false,
+          onPopInvokedWithResult: (didPop, _) {
+            if (didPop || _controller.state is Finishing) return;
+            _close(); // back gesture = Cancel, with the results so far
+          },
           child: Scaffold(
             backgroundColor: scheme.scrim,
             body: SafeArea(
@@ -266,7 +269,7 @@ class _CaptureBody extends StatelessWidget {
   final CaptureState state;
   final _Ui ui;
   final bool showDebug;
-  final void Function([String? analysisId]) onClose;
+  final VoidCallback onClose;
 
   bool _mirror(CameraChoice? c) => c == null
       ? false
@@ -328,11 +331,8 @@ class _CaptureBody extends StatelessWidget {
           right: 16,
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final banner = _TopBanner(
-                state: state,
-                ui: ui,
-                showFallbackNotice: controller.usingTabletFallback,
-              );
+              final banner =
+                  _TopBanner(controller: controller, state: state, ui: ui);
               if (!showDebug) return banner;
               final debug = DebugMetricsPanel(metrics: controller.metrics);
               if (constraints.maxWidth <
@@ -364,8 +364,7 @@ class _CaptureBody extends StatelessWidget {
             controller: controller,
             state: state,
             ui: ui,
-            onStart: controller.startRequested,
-            onCancel: () => onClose(),
+            onCancel: onClose,
             onChooseCamera: () => _showCameraSheet(context, controller, ui),
           ),
         ),
@@ -376,6 +375,9 @@ class _CaptureBody extends StatelessWidget {
 
   Widget? _panel(BuildContext context) {
     final s = ui.strings;
+    final skip = controller.canSkipCurrentStep
+        ? _PanelAction(s.skipStep, controller.skipStep, icon: ui.icons.skipStep)
+        : null;
     return switch (state) {
       Initializing() => _Panel(ui: ui, busy: true, message: s.starting),
       CameraUnavailable(:final reason) => _Panel(
@@ -383,52 +385,55 @@ class _CaptureBody extends StatelessWidget {
           icon: ui.icons.cameraOff,
           isError: true,
           message: s.cameraFailure(reason),
-          primaryLabel: s.retry,
-          onPrimary: controller.retryCamera,
-          secondaryLabel: s.cancel,
-          onSecondary: () => onClose(),
-          tertiaryLabel: reason == CameraFailure.permissionDenied
-              ? s.openSettings
-              : (controller.cameras.isNotEmpty ? s.useAnotherCamera : null),
-          onTertiary: reason == CameraFailure.permissionDenied
-              ? () => unawaited(NativeBridge.openAppSettings())
-              : () => _showCameraSheet(context, controller, ui),
+          actions: [
+            _PanelAction(s.cancel, onClose),
+            if (reason == CameraFailure.permissionDenied)
+              _PanelAction(s.openSettings,
+                  () => unawaited(NativeBridge.openAppSettings()))
+            else if (controller.cameras.isNotEmpty)
+              _PanelAction(s.useAnotherCamera,
+                  () => _showCameraSheet(context, controller, ui),
+                  icon: ui.icons.switchCamera),
+            if (skip != null) skip,
+            _PanelAction(s.retry, controller.retryCamera, primary: true),
+          ],
         ),
       NeedsOperator(:final lastIssue) => _Panel(
           ui: ui,
           icon: ui.icons.issue(lastIssue),
           isError: true,
           message: '${s.needsOperator}\n\n${s.issue(lastIssue)}',
-          primaryLabel: s.tryAgain,
-          onPrimary: controller.operatorRetry,
-          secondaryLabel: s.cancel,
-          onSecondary: () => onClose(),
-          tertiaryLabel:
-              controller.cameras.length > 1 ? s.useAnotherCamera : null,
-          onTertiary: () => _showCameraSheet(context, controller, ui),
+          actions: [
+            _PanelAction(s.cancel, onClose),
+            if (controller.cameras.length > 1)
+              _PanelAction(s.useAnotherCamera,
+                  () => _showCameraSheet(context, controller, ui),
+                  icon: ui.icons.switchCamera),
+            if (skip != null) skip,
+            _PanelAction(s.tryAgain, controller.operatorRetry, primary: true),
+          ],
         ),
-      Uploading(:final progress) => _Panel(
+      Finishing(:final progress) => _Panel(
           ui: ui,
           busy: true,
           progress: progress,
           message: s.uploading((progress * 100).round()),
         ),
-      UploadFailed() => _Panel(
+      FinishFailed() => _Panel(
           ui: ui,
           icon: ui.icons.uploadFailed,
           isError: true,
           message: s.uploadFailed,
-          primaryLabel: s.retry,
-          onPrimary: controller.retryUpload,
-          secondaryLabel: s.cancel,
-          onSecondary: () => onClose(),
+          actions: [
+            _PanelAction(s.cancel, onClose),
+            _PanelAction(s.retry, controller.retryFailedUploads, primary: true),
+          ],
         ),
-      Completed(:final analysisId) => _Panel(
+      SessionComplete() => _Panel(
           ui: ui,
           icon: ui.icons.completed,
           message: s.completed,
-          primaryLabel: s.done,
-          onPrimary: () => onClose(analysisId),
+          actions: [_PanelAction(s.done, onClose, primary: true)],
         ),
       _ => null,
     };
@@ -437,13 +442,13 @@ class _CaptureBody extends StatelessWidget {
 
 class _TopBanner extends StatelessWidget {
   const _TopBanner({
+    required this.controller,
     required this.state,
     required this.ui,
-    required this.showFallbackNotice,
   });
+  final MovementCaptureController controller;
   final CaptureState state;
   final _Ui ui;
-  final bool showFallbackNotice;
 
   @override
   Widget build(BuildContext context) {
@@ -451,6 +456,22 @@ class _TopBanner extends StatelessWidget {
     final scheme = theme.colorScheme;
     final textStyle = theme.textTheme.headlineSmall;
     final s = ui.strings;
+    final step = controller.currentStep;
+    final progress = Text(
+      s.stepProgress(controller.stepIndex, controller.stepCount, step),
+      style: theme.textTheme.titleMedium,
+    );
+
+    Widget infoRow(IconData icon, String text) => Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Row(
+            children: [
+              Icon(icon, size: 28),
+              const SizedBox(width: 12),
+              Expanded(child: Text(text, style: theme.textTheme.titleMedium)),
+            ],
+          ),
+        );
 
     switch (state) {
       case Checking(issue: final issue?, :final interrupted):
@@ -473,33 +494,42 @@ class _TopBanner extends StatelessWidget {
           ),
         );
       case Checking(:final armed):
+        final saved = controller.lastSavedStep;
         return _BannerCard(
           color: scheme.surfaceContainerHigh,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(armed ? s.hintArmed : s.hintIdle, style: textStyle),
-              if (showFallbackNotice) ...[
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Icon(ui.icons.info, size: 28),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(s.noUsbCameraNotice,
-                          style: theme.textTheme.titleMedium),
-                    ),
-                  ],
-                ),
-              ],
+              Row(
+                children: [
+                  Icon(ui.icons.step(step), size: 28),
+                  const SizedBox(width: 12),
+                  Expanded(child: progress),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(armed ? s.hintArmed : s.stepInstruction(step),
+                  style: textStyle),
+              if (saved != null && !armed)
+                infoRow(ui.icons.saved, s.stepSaved(saved)),
+              if (controller.usingTabletFallback)
+                infoRow(ui.icons.info, s.noUsbCameraNotice),
             ],
           ),
         );
       case CountingDown():
         return _BannerCard(
           color: scheme.surfaceContainerHigh,
-          child: Text(s.getReady, style: textStyle),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              progress,
+              const SizedBox(height: 8),
+              Text(s.getReady, style: textStyle),
+            ],
+          ),
         );
       case final Recording r:
         return _BannerCard(
@@ -508,6 +538,8 @@ class _TopBanner extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
+              progress,
+              const SizedBox(height: 8),
               Row(
                 children: [
                   Icon(ui.icons.recordingDot, color: ui.error, size: 28),
@@ -526,19 +558,7 @@ class _TopBanner extends StatelessWidget {
                 minHeight: 10,
                 color: ui.active,
               ),
-              if (!r.liveChecks) ...[
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Icon(ui.icons.info, size: 28),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(s.noLiveChecksNotice,
-                          style: theme.textTheme.titleMedium),
-                    ),
-                  ],
-                ),
-              ],
+              if (!r.liveChecks) infoRow(ui.icons.info, s.noLiveChecksNotice),
             ],
           ),
         );
@@ -592,7 +612,6 @@ class _BottomBar extends StatelessWidget {
     required this.controller,
     required this.state,
     required this.ui,
-    required this.onStart,
     required this.onCancel,
     required this.onChooseCamera,
   });
@@ -600,7 +619,6 @@ class _BottomBar extends StatelessWidget {
   final MovementCaptureController controller;
   final CaptureState state;
   final _Ui ui;
-  final VoidCallback onStart;
   final VoidCallback onCancel;
   final VoidCallback onChooseCamera;
 
@@ -634,18 +652,32 @@ class _BottomBar extends StatelessWidget {
             ),
           )
         : null;
+    final skip = controller.canSkipCurrentStep
+        ? OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(minimumSize: tall),
+            onPressed: controller.skipStep,
+            icon: Icon(ui.icons.skipStep),
+            label: Text(ui.strings.skipStep, overflow: TextOverflow.ellipsis),
+          )
+        : null;
     final start = showStart
         ? FilledButton.icon(
             style: FilledButton.styleFrom(minimumSize: tall),
-            onPressed: onStart,
+            onPressed: controller.startRequested,
             icon: Icon(ui.icons.startRecording),
             label: Text(ui.strings.startRecording),
           )
         : null;
 
+    final secondary = [
+      cancel,
+      if (cameraButton != null) cameraButton,
+      if (skip != null) skip,
+    ];
+
     return LayoutBuilder(builder: (context, constraints) {
       if (constraints.maxWidth < MovementCaptureConfig.tabletShortestSide) {
-        // Phones: Start full width on top, the other two below.
+        // Phones: Start full width on top, the others below.
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
@@ -653,10 +685,9 @@ class _BottomBar extends StatelessWidget {
             if (start != null) ...[start, const SizedBox(height: 12)],
             Row(
               children: [
-                Expanded(child: cancel),
-                if (cameraButton != null) ...[
-                  const SizedBox(width: 12),
-                  Expanded(child: cameraButton),
+                for (var i = 0; i < secondary.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 12),
+                  Expanded(child: secondary[i]),
                 ],
               ],
             ),
@@ -670,12 +701,25 @@ class _BottomBar extends StatelessWidget {
             const SizedBox(width: 16),
             Flexible(child: cameraButton),
           ],
+          if (skip != null) ...[
+            const SizedBox(width: 16),
+            Flexible(child: skip),
+          ],
           const Spacer(),
           if (start != null) SizedBox(width: 240, child: start),
         ],
       );
     });
   }
+}
+
+class _PanelAction {
+  const _PanelAction(this.label, this.onPressed,
+      {this.primary = false, this.icon});
+  final String label;
+  final VoidCallback onPressed;
+  final bool primary;
+  final IconData? icon;
 }
 
 class _Panel extends StatelessWidget {
@@ -686,12 +730,7 @@ class _Panel extends StatelessWidget {
     this.busy = false,
     this.isError = false,
     this.progress,
-    this.primaryLabel,
-    this.onPrimary,
-    this.secondaryLabel,
-    this.onSecondary,
-    this.tertiaryLabel,
-    this.onTertiary,
+    this.actions = const [],
   });
 
   final _Ui ui;
@@ -700,88 +739,88 @@ class _Panel extends StatelessWidget {
   final bool busy;
   final bool isError;
   final double? progress;
-  final String? primaryLabel;
-  final VoidCallback? onPrimary;
-  final String? secondaryLabel;
-  final VoidCallback? onSecondary;
-  final String? tertiaryLabel;
-  final VoidCallback? onTertiary;
+  final List<_PanelAction> actions;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     const buttonSize = Size(160, 56);
+
+    Widget button(_PanelAction a) {
+      final label = Text(a.label);
+      if (a.primary) {
+        return a.icon == null
+            ? FilledButton(
+                style: FilledButton.styleFrom(minimumSize: buttonSize),
+                onPressed: a.onPressed,
+                child: label)
+            : FilledButton.icon(
+                style: FilledButton.styleFrom(minimumSize: buttonSize),
+                onPressed: a.onPressed,
+                icon: Icon(a.icon),
+                label: label);
+      }
+      return a.icon == null
+          ? OutlinedButton(
+              style: OutlinedButton.styleFrom(minimumSize: buttonSize),
+              onPressed: a.onPressed,
+              child: label)
+          : OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(minimumSize: buttonSize),
+              onPressed: a.onPressed,
+              icon: Icon(a.icon),
+              label: label);
+    }
+
     return Positioned.fill(
       child: ColoredBox(
         color: scheme.scrim.withValues(alpha: 0.6),
         child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 620),
-            child: Material(
-              color: scheme.surface,
-              borderRadius: BorderRadius.circular(24),
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (busy && progress == null)
-                      const SizedBox(
-                        width: 56,
-                        height: 56,
-                        child: CircularProgressIndicator(strokeWidth: 5),
-                      )
-                    else if (icon != null)
-                      Icon(icon,
-                          size: 64, color: isError ? ui.error : ui.active),
-                    if (progress != null)
-                      LinearProgressIndicator(
-                        value: progress,
-                        minHeight: 12,
-                        color: ui.active,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 620),
+              child: Material(
+                color: scheme.surface,
+                borderRadius: BorderRadius.circular(24),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (busy && progress == null)
+                        const SizedBox(
+                          width: 56,
+                          height: 56,
+                          child: CircularProgressIndicator(strokeWidth: 5),
+                        )
+                      else if (icon != null)
+                        Icon(icon,
+                            size: 64, color: isError ? ui.error : ui.active),
+                      if (progress != null)
+                        LinearProgressIndicator(
+                          value: progress,
+                          minHeight: 12,
+                          color: ui.active,
+                        ),
+                      const SizedBox(height: 24),
+                      Text(
+                        message,
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.headlineSmall,
                       ),
-                    const SizedBox(height: 24),
-                    Text(
-                      message,
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.headlineSmall,
-                    ),
-                    if (primaryLabel != null ||
-                        secondaryLabel != null ||
-                        tertiaryLabel != null) ...[
-                      const SizedBox(height: 32),
-                      Wrap(
-                        alignment: WrapAlignment.center,
-                        spacing: 16,
-                        runSpacing: 12,
-                        children: [
-                          if (secondaryLabel != null)
-                            OutlinedButton(
-                              style: OutlinedButton.styleFrom(
-                                  minimumSize: buttonSize),
-                              onPressed: onSecondary,
-                              child: Text(secondaryLabel!),
-                            ),
-                          if (tertiaryLabel != null)
-                            OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                  minimumSize: buttonSize),
-                              onPressed: onTertiary,
-                              icon: Icon(ui.icons.switchCamera),
-                              label: Text(tertiaryLabel!),
-                            ),
-                          if (primaryLabel != null)
-                            FilledButton(
-                              style: FilledButton.styleFrom(
-                                  minimumSize: buttonSize),
-                              onPressed: onPrimary,
-                              child: Text(primaryLabel!),
-                            ),
-                        ],
-                      ),
+                      if (actions.isNotEmpty) ...[
+                        const SizedBox(height: 32),
+                        Wrap(
+                          alignment: WrapAlignment.center,
+                          spacing: 16,
+                          runSpacing: 12,
+                          children: [for (final a in actions) button(a)],
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -792,7 +831,7 @@ class _Panel extends StatelessWidget {
   }
 }
 
-/// Outline of the safe zone the patient must stay inside.
+/// Outline of the safe zone the person (or face, hands, feet) must stay inside.
 class _SafeZoneOverlay extends StatelessWidget {
   const _SafeZoneOverlay({required this.inset});
   final double inset;

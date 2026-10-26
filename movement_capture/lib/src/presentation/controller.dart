@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
@@ -10,14 +12,18 @@ import '../data/mlkit_frame_analyzer.dart';
 import '../domain/camera_choice.dart';
 import '../domain/capture_issue.dart';
 import '../domain/capture_state.dart';
+import '../domain/capture_step.dart';
 import '../domain/capture_storage.dart';
 import '../domain/config.dart';
 import '../domain/frame_analyzer.dart';
 import '../domain/frame_metrics.dart';
+import '../domain/landmark_track.dart';
 import '../domain/pose_topology.dart';
 import '../domain/quality_timer.dart';
+import '../domain/result.dart';
 import '../domain/uploader.dart';
 import 'serial_queue.dart';
+import 'step_uploads.dart';
 
 /// Owned by the capture screen's State. Its lifetime IS the widget's lifetime.
 ///
@@ -25,27 +31,46 @@ import 'serial_queue.dart';
 /// releases the camera runs through [_queue], one at a time. Public methods
 /// and timer/frame callbacks enqueue; code already inside the queue calls the
 /// `...Impl` methods directly and never enqueues again.
+///
+/// Uploads run through [StepUploads], a separate queue, so they never block
+/// the camera while the next step is filmed.
 class MovementCaptureController extends ChangeNotifier {
   MovementCaptureController({
     required this.config,
     required MovementUploader uploader,
     CaptureStorage storage = const FileCaptureStorage(),
-    FrameAnalyzer Function(MovementCaptureConfig config,
-            {required int Function() rotationDegrees})
-        analyzerFactory = MlKitFrameAnalyzer.new,
+    FrameAnalyzerFactory analyzerFactory = MlKitFrameAnalyzer.new,
     this.onCameraChanged,
-  })  : _uploader = uploader,
-        _storage = storage,
+  })  : _storage = storage,
         _analyzerFactory = analyzerFactory,
-        _quality = QualityTimer(grace: config.violationGrace);
+        _quality = QualityTimer(grace: config.violationGrace),
+        steps = List.unmodifiable(config.effectiveSteps),
+        sessionId = _newSessionId() {
+    _uploads = StepUploads(
+      uploader: uploader,
+      storage: storage,
+      onChanged: _onUploadsChanged,
+    );
+  }
+
+  static String _newSessionId() {
+    final r = Random.secure();
+    return List.generate(
+        16, (_) => r.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+  }
 
   final MovementCaptureConfig config;
-  final MovementUploader _uploader;
   final CaptureStorage _storage;
-  final FrameAnalyzer Function(MovementCaptureConfig,
-      {required int Function() rotationDegrees}) _analyzerFactory;
+  final FrameAnalyzerFactory _analyzerFactory;
   final QualityTimer _quality;
   final SerialQueue _queue = SerialQueue();
+  late final StepUploads _uploads;
+
+  /// Steps of this session, in order.
+  final List<CaptureStep> steps;
+
+  /// Sent with every step's upload.
+  final String sessionId;
 
   /// Fired only when the operator picks a camera from the list.
   final void Function(CameraDescription camera)? onCameraChanged;
@@ -68,6 +93,31 @@ class MovementCaptureController extends ChangeNotifier {
   CameraChoice? _selected;
   CameraChoice? get selectedCamera => _selected;
 
+  int _stepIndex = 0;
+
+  /// 0-based index of the current step.
+  int get stepIndex => _stepIndex;
+  int get stepCount => steps.length;
+  CaptureStep get currentStep => steps[_stepIndex];
+
+  CaptureStep? _lastSaved;
+
+  /// The step recorded just before the current one (for "Saved: …").
+  CaptureStep? get lastSavedStep => _lastSaved;
+
+  final Set<CaptureStep> _skipped = {};
+  bool _sessionFinished = false;
+
+  /// One entry per configured step.
+  List<CaptureStepResult> get results => [
+        for (final s in steps)
+          CaptureStepResult(
+            step: s,
+            analysisId: _uploads.analysisIdFor(s),
+            skipped: _skipped.contains(s),
+          ),
+      ];
+
   static bool get _isIOS => defaultTargetPlatform == TargetPlatform.iOS;
 
   /// True when no USB camera is connected and a built-in camera is in use.
@@ -79,6 +129,12 @@ class MovementCaptureController extends ChangeNotifier {
   /// The camera list may be opened in these states only.
   bool get canChangeCamera =>
       !_starting && !_busyTransition && _stateAllowsCameraChange;
+
+  /// Whether "Skip this step" may be offered right now (UI).
+  bool get canSkipCurrentStep =>
+      !_sessionFinished &&
+      config.skippableSteps.contains(currentStep) &&
+      canChangeCamera;
 
   bool get _stateAllowsCameraChange => switch (_state) {
         Checking(armed: false) => true,
@@ -97,6 +153,7 @@ class MovementCaptureController extends ChangeNotifier {
   bool _failing = false;
   bool _disposed = false;
   bool _suspended = false;
+  bool _purgedAtStart = false;
   bool _frameSeenThisPhase = false;
   bool _liveChecks = true;
   int _restarts = 0;
@@ -107,10 +164,9 @@ class MovementCaptureController extends ChangeNotifier {
   Timer? _frameWatchdog;
   final Stopwatch _recordClock = Stopwatch();
 
-  File? _video;
   Duration _recordedDuration = Duration.zero;
   DateTime? _capturedAtUtc;
-  UploadCancellation? _uploadCancellation;
+  LandmarkTrack? _track;
 
   static const Set<String> _permissionCodes = {
     'CameraAccessDenied',
@@ -180,6 +236,17 @@ class MovementCaptureController extends ChangeNotifier {
     }
   }
 
+  /// Operator tapped "Skip this step".
+  Future<void> skipStep() => _serial(() async {
+        if (_disposed || _sessionFinished) return;
+        if (!config.skippableSteps.contains(currentStep)) return;
+        if (!_stateAllowsCameraChange) return;
+        _skipped.add(currentStep);
+        _newPhase();
+        _cancelAllTimers();
+        await _advanceImpl(saved: false);
+      });
+
   /// Operator tapped "Try again" on the NeedsOperator panel.
   Future<void> operatorRetry() => _serial(() async {
         if (_disposed || _state is! NeedsOperator) return;
@@ -195,17 +262,17 @@ class MovementCaptureController extends ChangeNotifier {
         await _startImpl();
       });
 
-  Future<void> retryUpload() => _serial(() async {
-        if (_disposed || _state is! UploadFailed) return;
-        await _uploadVideo();
-      });
+  /// "Retry" on the final screen: re-sends failed uploads.
+  void retryFailedUploads() {
+    if (_disposed || _state is! FinishFailed) return;
+    _uploads.retryFailed();
+    _updateFinishState();
+  }
 
-  /// App went to the background (paused/hidden): drop everything except an
-  /// upload. Never call this for `inactive`.
+  /// App went to the background (paused/hidden): release the camera. Uploads
+  /// keep running. Never call this for `inactive`.
   Future<void> suspend() => _serial(() async {
-        if (_disposed) return;
-        final s = _state;
-        if (s is Uploading || s is UploadFailed || s is Completed) return;
+        if (_disposed || _sessionFinished) return;
         if (_camera == null) return;
         _newPhase();
         _cancelAllTimers();
@@ -219,7 +286,7 @@ class MovementCaptureController extends ChangeNotifier {
   /// App came back: reopen if [suspend] released the camera, or retry if the
   /// user just came back from Settings after camera access was off.
   Future<void> resume() => _serial(() async {
-        if (_disposed) return;
+        if (_disposed || _sessionFinished) return;
         final s = _state;
         final cameFromSettings = s is CameraUnavailable &&
             s.reason == CameraFailure.permissionDenied;
@@ -233,7 +300,7 @@ class MovementCaptureController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _cancelAllTimers();
-    _uploadCancellation?.cancel(); // don't make teardown wait for an upload
+    _uploads.cancelAll(); // don't make teardown wait for uploads
     unawaited(_serial(_teardownImpl));
     metrics.dispose();
     overlay.dispose();
@@ -243,16 +310,23 @@ class MovementCaptureController extends ChangeNotifier {
   // ------------------------------------------------- queued implementations
 
   Future<void> _startImpl() async {
-    if (_disposed) return;
+    if (_disposed || _sessionFinished) return;
     _starting = true;
     _setState(const Initializing());
     try {
-      await _storage.purgeAll(); // leftovers from a crash or kill
+      if (!_purgedAtStart) {
+        // Once per session: a later purge would delete earlier steps' files
+        // that are still waiting to upload.
+        await _storage.purgeAll(); // leftovers from a crash or kill
+        _purgedAtStart = true;
+      }
       final choices = await _enumerate();
       if (_disposed) return;
+      final stepChoice = _firstOfKind(choices, config.stepCameras[currentStep]);
       final choice = pickDefaultCamera(
         choices,
-        preferredId: _selected?.id ?? config.preferredCameraId,
+        preferredId:
+            _selected?.id ?? stepChoice?.id ?? config.preferredCameraId,
       );
       if (choice == null) {
         _setState(const CameraUnavailable(CameraFailure.noCamera));
@@ -270,10 +344,18 @@ class MovementCaptureController extends ChangeNotifier {
   }
 
   Future<void> _selectImpl(CameraChoice choice) async {
-    if (_disposed || !_stateAllowsCameraChange) return;
+    if (_disposed || _sessionFinished || !_stateAllowsCameraChange) return;
     if (choice.id == _selected?.id && _camera != null && _state is Checking) {
       return; // already in use
     }
+    await _switchCameraImpl(choice);
+    if (!_disposed && _camera != null) {
+      onCameraChanged?.call(choice.description);
+    }
+  }
+
+  /// Closes the current camera and opens [choice] for the current step.
+  Future<void> _switchCameraImpl(CameraChoice choice) async {
     _starting = true;
     _setState(const Initializing());
     try {
@@ -281,9 +363,7 @@ class MovementCaptureController extends ChangeNotifier {
       _cancelAllTimers();
       await _releaseCamera();
       _restarts = 0;
-      await _storage.purgeAll(); // safe: nothing is recording
       await _open(choice);
-      if (!_disposed) onCameraChanged?.call(choice.description);
     } on CameraException catch (e) {
       debugPrint('movement_capture: switch to ${choice.id} failed ${e.code}');
       await _releaseCamera();
@@ -304,6 +384,17 @@ class MovementCaptureController extends ChangeNotifier {
     if (!_disposed) notifyListeners();
     return _choices;
   }
+
+  CameraChoice? _firstOfKind(List<CameraChoice> choices, CameraKind? kind) {
+    if (kind == null) return null;
+    for (final c in choices) {
+      if (c.kind == kind) return c;
+    }
+    return null;
+  }
+
+  FrameAnalyzer _newAnalyzer() => _analyzerFactory(config,
+      step: currentStep, rotationDegrees: _analysisRotation);
 
   /// Throws CameraException on failure; callers handle it.
   Future<void> _open(CameraChoice choice) async {
@@ -327,7 +418,7 @@ class MovementCaptureController extends ChangeNotifier {
       return;
     }
     cam.addListener(_onCameraValue);
-    _analyzer = _analyzerFactory(config, rotationDegrees: _analysisRotation);
+    _analyzer = _newAnalyzer();
     await _beginChecking();
   }
 
@@ -433,16 +524,20 @@ class MovementCaptureController extends ChangeNotifier {
       }
       if (_disposed) return; // teardown (queued next) deletes the file
       _capturedAtUtc = DateTime.now().toUtc();
+      _track = _liveChecks && currentStep.recordsLandmarks
+          ? LandmarkTrack(sessionId: sessionId, step: currentStep)
+          : null;
+      final total = config.durationFor(currentStep);
       _recordClock
         ..reset()
         ..start();
       _setState(Recording(
         elapsed: Duration.zero,
-        total: config.maxDuration,
+        total: total,
         liveChecks: _liveChecks,
       ));
       final recordingEpoch = _epoch;
-      _maxDurationTimer = Timer(config.maxDuration, () {
+      _maxDurationTimer = Timer(total, () {
         if (_transitionQueued || _disposed) return;
         _transitionQueued = true;
         unawaited(_serial(() => _finishRecordingImpl(recordingEpoch)));
@@ -451,8 +546,8 @@ class MovementCaptureController extends ChangeNotifier {
         if (_state is! Recording) return;
         final e = _recordClock.elapsed;
         _setState(Recording(
-          elapsed: e > config.maxDuration ? config.maxDuration : e,
-          total: config.maxDuration,
+          elapsed: e > total ? total : e,
+          total: total,
           liveChecks: _liveChecks,
         ));
       });
@@ -477,6 +572,7 @@ class MovementCaptureController extends ChangeNotifier {
     _busyTransition = true;
     try {
       _stopRecordingTimers();
+      _track = null;
       final raw = await cam.stopVideoRecording();
       await _storage.deletePath(raw.path);
       _restarts++;
@@ -505,65 +601,123 @@ class MovementCaptureController extends ChangeNotifier {
       return;
     }
     _busyTransition = true;
+    File? video;
+    File? landmarks;
     try {
       _stopRecordingTimers();
       _recordedDuration = _recordClock.elapsed;
       final raw = await cam.stopVideoRecording();
       debugPrint('movement_capture: raw file at ${raw.path}');
       _newPhase();
-      _video = await _storage.adopt(raw.path);
+      video = await _storage.adopt(raw.path);
+      final track = _track;
+      _track = null;
+      if (track != null && !track.isEmpty) {
+        landmarks = await _storage.writeLandmarks(
+            jsonEncode(track.toJson(mirrored: _fileMirrored)));
+      }
     } on CameraException catch (e) {
       debugPrint('movement_capture: finish failed ${e.code}');
+      _busyTransition = false;
+      await _failImpl(CameraFailure.other);
+      return;
+    } on FileSystemException catch (e) {
+      debugPrint('movement_capture: saving the clip failed $e');
+      if (video != null) await _storage.deletePath(video.path);
       _busyTransition = false;
       await _failImpl(CameraFailure.other);
       return;
     } finally {
       _busyTransition = false;
     }
-    if (_disposed) return; // teardown deletes _video
-    await _releaseCamera(); // not needed for the upload
-    await _uploadVideo();
+    final savedVideo = video;
+    if (_disposed) return; // teardown purges the files
+
+    final kind = _selected?.kind ?? CameraKind.external;
+    _uploads.enqueue(MovementClip(
+      file: savedVideo,
+      landmarksFile: landmarks,
+      duration: _recordedDuration,
+      resolution: config.resolution,
+      capturedAtUtc: _capturedAtUtc ?? DateTime.now().toUtc(),
+      metadata: Map.unmodifiable(config.metadata),
+      platform: _isIOS ? 'ios' : 'android',
+      cameraKind: kind.name,
+      fileMirrored: _fileMirrored,
+      liveChecks: _liveChecks,
+      sessionId: sessionId,
+      step: currentStep,
+      stepIndex: _stepIndex,
+      stepCount: steps.length,
+    ));
+    await _advanceImpl(saved: true);
   }
 
-  Future<void> _uploadVideo() async {
-    final file = _video;
-    if (file == null || _disposed) return;
-    final cancellation = UploadCancellation();
-    _uploadCancellation = cancellation;
-    _setState(const Uploading(0));
-    final kind = _selected?.kind ?? CameraKind.external;
+  /// Moves to the next step, or finishes the session after the last one.
+  Future<void> _advanceImpl({required bool saved}) async {
+    if (saved) _lastSaved = currentStep;
+    _restarts = 0;
+    if (_stepIndex + 1 >= steps.length) {
+      await _finishSessionImpl();
+      return;
+    }
+    _stepIndex++;
+
+    final wanted = config.stepCameras[currentStep];
+    if (wanted != null && _selected?.kind != wanted) {
+      final target = _firstOfKind(await _enumerate(), wanted);
+      if (target != null) {
+        await _switchCameraImpl(target);
+        return;
+      }
+    }
+    if (_camera == null) {
+      await _startImpl();
+      return;
+    }
+    // Frames from the old step's analyzer may still arrive; _onFrame ignores
+    // them because the analyzer is no longer current (T37).
+    final old = _analyzer;
+    _analyzer = _newAnalyzer();
     try {
-      final id = await _uploader.upload(
-        MovementClip(
-          file: file,
-          duration: _recordedDuration,
-          resolution: config.resolution,
-          capturedAtUtc: _capturedAtUtc ?? DateTime.now().toUtc(),
-          metadata: Map.unmodifiable(config.metadata),
-          platform: _isIOS ? 'ios' : 'android',
-          cameraKind: kind.name,
-          fileMirrored: _isIOS && kind == CameraKind.front,
-          liveChecks: _liveChecks,
-        ),
-        onProgress: (p) {
-          if (cancellation.isCancelled || _state is! Uploading) return;
-          _setState(Uploading(p < 0 ? 0 : (p > 1 ? 1 : p)));
-        },
-        cancellation: cancellation,
-      );
-      if (cancellation.isCancelled || _disposed) return;
-      if (id.isEmpty) throw StateError('Uploader returned an empty id');
-      await _storage.deletePath(file.path);
-      _video = null;
-      _setState(Completed(id));
-    } catch (e) {
-      if (cancellation.isCancelled || _disposed) return;
-      debugPrint('movement_capture: upload failed $e');
-      _setState(const UploadFailed());
+      await old?.close();
+    } catch (_) {}
+    await _beginChecking();
+  }
+
+  Future<void> _finishSessionImpl() async {
+    _sessionFinished = true;
+    _newPhase();
+    _cancelAllTimers();
+    await _releaseCamera(); // not needed for uploads
+    _updateFinishState();
+  }
+
+  // --------------------------------------------------------------- uploads
+
+  void _onUploadsChanged() {
+    if (_disposed) return;
+    if (_sessionFinished) {
+      _updateFinishState();
+    } else {
+      notifyListeners();
+    }
+  }
+
+  void _updateFinishState() {
+    if (_disposed || !_sessionFinished) return;
+    if (_uploads.hasPending) {
+      _setState(Finishing(_uploads.progress));
+    } else if (_uploads.failedCount > 0) {
+      _setState(FinishFailed(_uploads.failedCount));
+    } else {
+      _setState(const SessionComplete());
     }
   }
 
   // ---------------------------------------------------------------- frames
+
+  bool get _fileMirrored => _isIOS && _selected?.kind == CameraKind.front;
 
   void _onFrame(CameraImage image) {
     _frameSeenThisPhase = true;
@@ -577,7 +731,8 @@ class MovementCaptureController extends ChangeNotifier {
           epoch != _epoch ||
           _busyTransition ||
           _transitionQueued ||
-          _disposed) {
+          _disposed ||
+          !identical(analyzer, _analyzer)) {
         return;
       }
       _onCheck(check);
@@ -618,6 +773,7 @@ class MovementCaptureController extends ChangeNotifier {
       case CountingDown():
         if (r.confirmedBad) _cancelCountdown(r.lastIssue!);
       case Recording(liveChecks: true):
+        _recordSample(check);
         if (r.confirmedBad && !_transitionQueued) {
           _transitionQueued = true;
           final issue = r.lastIssue!;
@@ -629,11 +785,37 @@ class MovementCaptureController extends ChangeNotifier {
     }
   }
 
+  void _recordSample(FrameCheck check) {
+    final track = _track;
+    if (track == null) return;
+    final t = _recordClock.elapsedMilliseconds;
+    switch (track.step) {
+      case CaptureStep.fullBody:
+        track.addPose(
+          tMs: t,
+          pose: check.pose,
+          faceCount: check.faceCount,
+          image: check.uprightSize,
+          rotationDegrees: check.rotationDegrees,
+        );
+      case CaptureStep.face:
+        track.addFace(
+          tMs: t,
+          face: check.face,
+          faceCount: check.faceCount,
+          image: check.uprightSize,
+          rotationDegrees: check.rotationDegrees,
+        );
+      case CaptureStep.hands:
+      case CaptureStep.feet:
+        break;
+    }
+  }
+
   void _onCameraValue() {
     final cam = _camera;
     if (cam == null || !cam.value.hasError) return;
-    final s = _state;
-    if (s is CameraUnavailable || s is Uploading || s is Completed) return;
+    if (_state is CameraUnavailable || _sessionFinished) return;
     debugPrint('movement_capture: camera error ${cam.value.errorDescription}');
     _requestFail(CameraFailure.other, camera: cam); // e.g. webcam unplugged
   }
@@ -650,6 +832,7 @@ class MovementCaptureController extends ChangeNotifier {
         debugPrint('movement_capture: no frames while recording; '
             'continuing without live checks');
         _liveChecks = false;
+        _track = null; // a partial track would mislead the server
         _setState(Recording(
           elapsed: s.elapsed,
           total: s.total,
@@ -707,9 +890,9 @@ class MovementCaptureController extends ChangeNotifier {
     try {
       _newPhase();
       _cancelAllTimers();
+      _track = null;
       await _stopAndDeleteActiveRecording();
       await _releaseCamera();
-      await _storage.purgeAll();
       _restarts = 0;
       _setState(CameraUnavailable(reason));
     } finally {
@@ -744,9 +927,8 @@ class MovementCaptureController extends ChangeNotifier {
     _cancelAllTimers();
     await _stopAndDeleteActiveRecording();
     await _releaseCamera();
-    final video = _video;
-    _video = null;
-    if (video != null) await _storage.deletePath(video.path);
+    _uploads.cancelAll();
+    await _uploads.deleteAllFiles();
     await _storage.purgeAll();
   }
 

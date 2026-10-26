@@ -30,9 +30,32 @@ class LabSettings {
   UploaderMode uploaderMode = UploaderMode.mock;
   bool debugOverlay = true;
   bool showSkeleton = true;
+  final Set<CaptureStep> steps = {
+    CaptureStep.fullBody,
+    CaptureStep.face,
+    CaptureStep.hands,
+    CaptureStep.feet,
+  };
+  double closeUpDurationS = 10;
+  bool feetUseBackCamera = false;
 
   MovementCaptureConfig toConfig() => MovementCaptureConfig(
         maxDuration: Duration(seconds: maxDurationS.round()),
+        steps: [
+          for (final s in CaptureStep.values)
+            if (steps.contains(s)) s,
+        ],
+        stepDurations: {
+          for (final s in const [
+            CaptureStep.face,
+            CaptureStep.hands,
+            CaptureStep.feet,
+          ])
+            s: Duration(seconds: closeUpDurationS.round()),
+        },
+        stepCameras: feetUseBackCamera
+            ? const {CaptureStep.feet: CameraKind.back}
+            : const {},
         countdown: Duration(seconds: countdownS.round()),
         stableBeforeStart: Duration(milliseconds: stableMs.round()),
         violationGrace: Duration(milliseconds: graceMs.round()),
@@ -67,5 +90,7 @@ class LabSettings {
       'clipped=${maxClipped.toStringAsFixed(2)} centre/border=${minCenterToBorder.toStringAsFixed(2)} '
       'interval=${analysisIntervalMs.round()}ms '
       'mirror(usb/front/back)=${mirrorExternal ?? 'auto'}/${mirrorFront ?? 'auto'}/${mirrorBack ?? 'auto'} '
-      'orientation=${orientation.name} noLiveChecks=$allowNoLiveChecks skeleton=$showSkeleton';
+      'orientation=${orientation.name} noLiveChecks=$allowNoLiveChecks skeleton=$showSkeleton '
+      'steps=${steps.map((s) => s.name).join('+')} '
+      'closeUp=${closeUpDurationS.round()}s feetBack=$feetUseBackCamera';
 }

@@ -6,10 +6,14 @@ abstract interface class CaptureStorage {
   /// [purgeAll] always finds it.
   Future<File> adopt(String rawPath);
 
+  /// Writes a landmarks.json document into the package folder.
+  Future<File> writeLandmarks(String json);
+
   /// Deletes [path] if it exists. Never throws on a missing or locked file.
   Future<void> deletePath(String path);
 
   /// Deletes the package folder and any stray .mp4 in the cache root
-  /// (crash/kill mid-recording). NEVER call while recording.
+  /// (crash/kill mid-recording). NEVER call while recording or while a session
+  /// still has uploads pending: it would delete their files.
   Future<void> purgeAll();
 }

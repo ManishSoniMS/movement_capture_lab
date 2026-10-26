@@ -1,4 +1,8 @@
+import 'dart:ui' show Size;
+
 import 'capture_issue.dart';
+import 'capture_step.dart';
+import 'face_snapshot.dart';
 import 'luma_stats.dart';
 import 'pose_topology.dart';
 
@@ -29,6 +33,7 @@ class LandmarkPoint {
 
 class FrameMetrics {
   const FrameMetrics({
+    required this.step,
     required this.luma,
     required this.faces,
     required this.poses,
@@ -36,7 +41,9 @@ class FrameMetrics {
     required this.issues,
     required this.analysesPerSecond,
     required this.rotationDegrees,
+    this.faceWidthFraction,
   });
+  final CaptureStep step;
   final LumaStats luma;
   final int faces;
   final int poses;
@@ -46,6 +53,9 @@ class FrameMetrics {
 
   /// Rotation (0/90/180/270) that was given to the detector for this frame.
   final int rotationDegrees;
+
+  /// Face step: width of the found face as a share of the frame width.
+  final double? faceWidthFraction;
 }
 
 class FrameCheck {
@@ -53,14 +63,30 @@ class FrameCheck {
     required this.issues,
     required this.at,
     required this.metrics,
+    this.uprightSize = Size.zero,
+    this.rotationDegrees = 0,
     this.overlay = OverlayFrame.empty,
+    this.pose = const [],
+    this.faceCount = 0,
+    this.face,
   });
   final Set<CaptureIssue> issues;
   final DateTime at;
   final FrameMetrics metrics;
 
+  /// Size of the upright (rotated) image the normalised points refer to.
+  final Size uprightSize;
+  final int rotationDegrees;
+
   /// What the skeleton layer draws for this frame.
   final OverlayFrame overlay;
+
+  /// All pose points of the tracked person (fullBody step).
+  final List<PosePoint> pose;
+  final int faceCount;
+
+  /// The single face found (face step), with landmarks and contours.
+  final FaceSnapshot? face;
 
   CaptureIssue? get topIssue {
     for (final issue in CaptureIssue.values) {

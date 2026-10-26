@@ -59,4 +59,14 @@ void main() {
     const b = OverlayFrame(faces: [Rect.fromLTRB(0.2, 0.2, 0.4, 0.4)]);
     expect(OverlayFrame.lerp(a, b, 0.5).faces.single.left, closeTo(0.1, 1e-9));
   });
+
+  test('face contours are kept from the newer frame, not interpolated', () {
+    const a = OverlayFrame(faceContours: [
+      [Offset(0, 0), Offset(0.1, 0.1)],
+    ]);
+    const b = OverlayFrame(faceContours: [
+      [Offset(0.5, 0.5), Offset(0.6, 0.6)],
+    ]);
+    expect(OverlayFrame.lerp(a, b, 0.5).faceContours, b.faceContours);
+  });
 }

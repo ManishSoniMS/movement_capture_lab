@@ -59,4 +59,42 @@ void main() {
         MovementCaptureConfig(orientation: CaptureOrientation.landscape);
     expect(forced.orientationsFor(390).first, DeviceOrientation.landscapeLeft);
   });
+
+  test('steps: duplicates removed, empty means full body only', () {
+    expect(
+      MovementCaptureConfig(steps: const [
+        CaptureStep.face,
+        CaptureStep.fullBody,
+        CaptureStep.face,
+      ]).effectiveSteps,
+      [CaptureStep.face, CaptureStep.fullBody],
+    );
+    expect(MovementCaptureConfig(steps: const []).effectiveSteps,
+        [CaptureStep.fullBody]);
+  });
+
+  test('default steps run full body, face, hands, feet in that order', () {
+    expect(MovementCaptureConfig().effectiveSteps, CaptureStep.values);
+  });
+
+  test('durations: full body uses maxDuration, others 10 s, all clamped', () {
+    final c = MovementCaptureConfig(
+      maxDuration: const Duration(seconds: 20),
+      stepDurations: const {CaptureStep.hands: Duration(seconds: 60)},
+    );
+    expect(c.durationFor(CaptureStep.fullBody), const Duration(seconds: 20));
+    expect(c.durationFor(CaptureStep.face), const Duration(seconds: 10));
+    expect(c.durationFor(CaptureStep.hands), const Duration(seconds: 30));
+  });
+
+  test('only face, hands and feet are skippable by default', () {
+    final c = MovementCaptureConfig();
+    expect(c.skippableSteps, {
+      CaptureStep.face,
+      CaptureStep.hands,
+      CaptureStep.feet,
+    });
+    expect(c.stepCameras, isEmpty);
+    expect(c.faceMinWidthFraction, 0.28);
+  });
 }

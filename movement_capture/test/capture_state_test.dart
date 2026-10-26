@@ -33,4 +33,10 @@ void main() {
       isTrue,
     );
   });
+
+  test('finish states carry upload progress and failure count', () {
+    expect(const Finishing(0.4).progress, 0.4);
+    expect(const FinishFailed(2).failedCount, 2);
+    expect(const SessionComplete(), isA<CaptureState>());
+  });
 }

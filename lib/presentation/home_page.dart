@@ -179,7 +179,7 @@ class _HomePageState extends State<HomePage> {
               },
             ),
           const _Section('Timing'),
-          _slider('Max duration (s, values above 30 are clamped)',
+          _slider('Full-body duration (s, values above 30 are clamped)',
               _s.maxDurationS, 5, 45, 40, _int, (v) => _s.maxDurationS = v),
           _slider('Countdown (s)', _s.countdownS, 1, 5, 4, _int,
               (v) => _s.countdownS = v),
@@ -191,6 +191,26 @@ class _HomePageState extends State<HomePage> {
               _int, (v) => _s.maxRestarts = v),
           _slider('Analysis interval (ms)', _s.analysisIntervalMs, 50, 500, 18,
               _int, (v) => _s.analysisIntervalMs = v),
+          const _Section('Steps'),
+          for (final step in CaptureStep.values)
+            CheckboxListTile(
+              title: Text(step.name),
+              value: _s.steps.contains(step),
+              onChanged: (v) => setState(() {
+                if (v == true) {
+                  _s.steps.add(step);
+                } else if (_s.steps.length > 1) {
+                  _s.steps.remove(step);
+                }
+              }),
+            ),
+          _slider('Face / hands / feet duration (s)', _s.closeUpDurationS, 5,
+              30, 25, _int, (v) => _s.closeUpDurationS = v),
+          SwitchListTile(
+            title: const Text('Switch to back camera for the feet step'),
+            value: _s.feetUseBackCamera,
+            onChanged: (v) => setState(() => _s.feetUseBackCamera = v),
+          ),
           const _Section('Camera'),
           ListTile(
             title: const Text('Rotation for analysis'),

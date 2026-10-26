@@ -1,38 +1,61 @@
 import 'dart:typed_data';
-import 'dart:ui' show Rect, Size;
+import 'dart:ui' show Offset, Rect, Size;
 
 import 'package:camera/camera.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
 import '../domain/capture_issue.dart';
+import '../domain/capture_step.dart';
 import '../domain/config.dart';
+import '../domain/face_snapshot.dart';
 import '../domain/frame_analyzer.dart';
 import '../domain/frame_metrics.dart';
 import '../domain/luma_stats.dart';
 import '../domain/pose_topology.dart';
 
-/// ML Kit pose + face detection plus luma stats.
+/// ML Kit detection plus luma stats, with the detectors chosen per step:
+/// full body = pose + fast face count; face = face with landmarks and
+/// contours; hands and feet = lighting only (ML Kit has no hand or foot
+/// detector, so those steps cannot be position-checked).
 class MlKitFrameAnalyzer implements FrameAnalyzer {
-  MlKitFrameAnalyzer(this._config, {required int Function() rotationDegrees})
-      : _rotationDegrees = rotationDegrees,
-        _pose = PoseDetector(
-          options: PoseDetectorOptions(
-            mode: PoseDetectionMode.stream,
-            model: PoseDetectionModel.base,
-          ),
-        ),
-        _faces = FaceDetector(
-          options: FaceDetectorOptions(
-            performanceMode: FaceDetectorMode.fast,
-            minFaceSize: 0.05, // faces are small at full-body distance
-          ),
-        );
+  MlKitFrameAnalyzer(
+    this._config, {
+    required this.step,
+    required int Function() rotationDegrees,
+  })  : _rotationDegrees = rotationDegrees,
+        _pose = step.usesPose
+            ? PoseDetector(
+                options: PoseDetectorOptions(
+                  mode: PoseDetectionMode.stream,
+                  model: PoseDetectionModel.base,
+                ),
+              )
+            : null,
+        _faces = switch (step) {
+          CaptureStep.fullBody => FaceDetector(
+              options: FaceDetectorOptions(
+                performanceMode: FaceDetectorMode.fast,
+                minFaceSize: 0.05, // faces are small at full-body distance
+              ),
+            ),
+          CaptureStep.face => FaceDetector(
+              options: FaceDetectorOptions(
+                performanceMode: FaceDetectorMode.fast,
+                enableLandmarks: true,
+                enableContours: true,
+                minFaceSize: 0.15,
+              ),
+            ),
+          _ => null,
+        };
 
+  @override
+  final CaptureStep step;
   final MovementCaptureConfig _config;
   final int Function() _rotationDegrees;
-  final PoseDetector _pose;
-  final FaceDetector _faces;
+  final PoseDetector? _pose;
+  final FaceDetector? _faces;
 
   static const List<PoseLandmarkType> _required = [
     PoseLandmarkType.nose,
@@ -52,8 +75,6 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
   DateTime _lastRun = DateTime.fromMillisecondsSinceEpoch(0);
   final List<DateTime> _runTimes = [];
 
-  /// Returns null when the frame is skipped (busy or throttled).
-  ///
   /// Everything before the first `await` runs synchronously inside the camera
   /// callback. The camera reuses the frame buffer once the callback returns,
   /// so brightness is computed and the bytes are copied first.
@@ -71,43 +92,82 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
 
     try {
       final rotation = _normalise(_rotationDegrees());
-      final input = _toInputImage(image, rotation); // validates, copies bytes
+      // Validates the format for every step and copies the bytes.
+      final input = _toInputImage(image, rotation);
       final luma = _luma(image);
+      final upright = _uprightSize(image, rotation);
 
-      final (poses, faces) =
-          await (_pose.processImage(input), _faces.processImage(input)).wait;
+      final poseFuture =
+          _pose?.processImage(input) ?? Future.value(const <Pose>[]);
+      final faceFuture =
+          _faces?.processImage(input) ?? Future.value(const <Face>[]);
+      final (poses, faces) = await (poseFuture, faceFuture).wait;
 
       final issues = <CaptureIssue>{};
       final lightIssue = luma.issueFor(_config);
       if (lightIssue != null) issues.add(lightIssue);
-      if (faces.length > 1) issues.add(CaptureIssue.multiplePeople);
 
-      final upright = _uprightSize(image, rotation);
-      var points = const <LandmarkPoint>[];
+      var required = const <LandmarkPoint>[];
       var allPose = const <PosePoint>[];
-      if (poses.isEmpty) {
-        issues.add(CaptureIssue.noPerson);
-      } else {
-        points = _evaluate(poses.first, upright);
-        allPose = _allPoints(poses.first, upright);
-        if (points.any((p) => !p.ok)) issues.add(CaptureIssue.outOfFrame);
-      }
-      final faceBoxes = [
+      FaceSnapshot? face;
+      double? faceWidth;
+      var contours = const <List<Offset>>[];
+      final boxes = [
         for (final f in faces) _normalisedRect(f.boundingBox, upright),
       ];
+
+      switch (step) {
+        case CaptureStep.fullBody:
+          if (faces.length > 1) issues.add(CaptureIssue.multiplePeople);
+          if (poses.isEmpty) {
+            issues.add(CaptureIssue.noPerson);
+          } else {
+            required = _evaluate(poses.first, upright);
+            allPose = _allPoints(poses.first, upright);
+            if (required.any((p) => !p.ok)) issues.add(CaptureIssue.outOfFrame);
+          }
+        case CaptureStep.face:
+          if (faces.isEmpty) {
+            issues.add(CaptureIssue.noFace);
+          } else if (faces.length > 1) {
+            issues.add(CaptureIssue.multiplePeople);
+          } else {
+            face = _snapshot(faces.first, upright);
+            faceWidth = face.box.width;
+            if (!_insideSafeZone(face.box)) issues.add(CaptureIssue.outOfFrame);
+            if (faceWidth < _config.faceMinWidthFraction) {
+              issues.add(CaptureIssue.faceTooFar);
+            }
+            contours = face.contours.values.toList();
+          }
+        case CaptureStep.hands:
+        case CaptureStep.feet:
+          break; // lighting only: no hand/foot detector exists in ML Kit
+      }
 
       return FrameCheck(
         issues: issues,
         at: now,
-        overlay: OverlayFrame(pose: allPose, faces: faceBoxes),
+        uprightSize: upright,
+        rotationDegrees: rotation,
+        pose: allPose,
+        faceCount: faces.length,
+        face: face,
+        overlay: OverlayFrame(
+          pose: allPose,
+          faces: boxes,
+          faceContours: contours,
+        ),
         metrics: FrameMetrics(
+          step: step,
           luma: luma,
           faces: faces.length,
           poses: poses.length,
-          landmarks: points,
+          landmarks: required,
           issues: issues,
           analysesPerSecond: _runTimes.length,
           rotationDegrees: rotation,
+          faceWidthFraction: faceWidth,
         ),
       );
     } finally {
@@ -117,8 +177,12 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
 
   @override
   Future<void> close() async {
-    await _pose.close();
-    await _faces.close();
+    try {
+      await _pose?.close();
+    } catch (_) {}
+    try {
+      await _faces?.close();
+    } catch (_) {}
   }
 
   static int _normalise(int degrees) {
@@ -173,6 +237,33 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
     return swap
         ? Size(image.height.toDouble(), image.width.toDouble())
         : Size(image.width.toDouble(), image.height.toDouble());
+  }
+
+  bool _insideSafeZone(Rect r) {
+    final inset = _config.safeZoneInset;
+    return r.left >= inset &&
+        r.top >= inset &&
+        r.right <= 1 - inset &&
+        r.bottom <= 1 - inset;
+  }
+
+  FaceSnapshot _snapshot(Face f, Size upright) {
+    Offset norm(int x, int y) => Offset(x / upright.width, y / upright.height);
+    return FaceSnapshot(
+      box: _normalisedRect(f.boundingBox, upright),
+      headEulerX: f.headEulerAngleX,
+      headEulerY: f.headEulerAngleY,
+      headEulerZ: f.headEulerAngleZ,
+      landmarks: {
+        for (final e in f.landmarks.entries)
+          if (e.value case final lm?) e.key.name: norm(lm.position.x, lm.position.y),
+      },
+      contours: {
+        for (final e in f.contours.entries)
+          if (e.value case final c? when c.points.isNotEmpty)
+            e.key.name: [for (final p in c.points) norm(p.x, p.y)],
+      },
+    );
   }
 
   List<PosePoint> _allPoints(Pose pose, Size upright) => [

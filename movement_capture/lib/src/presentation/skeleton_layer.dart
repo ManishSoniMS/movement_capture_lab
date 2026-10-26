@@ -203,6 +203,21 @@ class _SkeletonPainter extends CustomPainter {
         line.color = colors.face;
         canvas.drawRRect(r, line);
       }
+
+      for (final contour in frame.faceContours) {
+        if (contour.length < 2) continue;
+        final path = Path()
+          ..moveTo(contour.first.dx * size.width, contour.first.dy * size.height);
+        for (final p in contour.skip(1)) {
+          path.lineTo(p.dx * size.width, p.dy * size.height);
+        }
+        final thin = Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeJoin = StrokeJoin.round
+          ..strokeWidth = stroke * 0.6
+          ..color = colors.face;
+        canvas.drawPath(path, thin);
+      }
     }
 
     // Debug: ring around required points that fail the in-frame check.

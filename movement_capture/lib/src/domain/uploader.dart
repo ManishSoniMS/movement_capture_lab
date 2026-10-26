@@ -3,8 +3,10 @@ import 'dart:io';
 
 import 'package:camera/camera.dart';
 
-/// A finished recording handed to the uploader. The package deletes [file]
-/// after a successful upload; the uploader must not keep a reference to it.
+import 'capture_step.dart';
+
+/// One recorded step handed to the uploader. The package deletes [file] and
+/// [landmarksFile] after a successful upload; don't keep references to them.
 class MovementClip {
   const MovementClip({
     required this.file,
@@ -16,6 +18,11 @@ class MovementClip {
     required this.cameraKind,
     required this.fileMirrored,
     required this.liveChecks,
+    required this.sessionId,
+    required this.step,
+    required this.stepIndex,
+    required this.stepCount,
+    this.landmarksFile,
   });
 
   final File file;
@@ -38,12 +45,32 @@ class MovementClip {
   /// False when the recording ran without live quality checks.
   final bool liveChecks;
 
-  /// The four fields above as strings, ready for a multipart form.
-  Map<String, String> get deviceFields => {
+  /// Same for every step of one capture session.
+  final String sessionId;
+  final CaptureStep step;
+
+  /// 0-based position in the session, and the number of configured steps.
+  final int stepIndex;
+  final int stepCount;
+
+  /// landmarks.json (fullBody and face steps), or null.
+  final File? landmarksFile;
+
+  /// Every text field for a multipart form: metadata first, then the
+  /// package's fields (which win on a name clash).
+  Map<String, String> get formFields => {
+        ...metadata,
+        'durationMs': '${duration.inMilliseconds}',
+        'resolutionPreset': resolution.name,
+        'capturedAt': capturedAtUtc.toIso8601String(),
         'platform': platform,
         'cameraKind': cameraKind,
         'fileMirrored': '$fileMirrored',
         'liveChecks': '$liveChecks',
+        'sessionId': sessionId,
+        'step': step.name,
+        'stepIndex': '$stepIndex',
+        'stepCount': '$stepCount',
       };
 }
 
@@ -60,11 +87,12 @@ class UploadCancellation {
 }
 
 /// Implemented by the host app (and by the lab app for testing).
+/// Called once per recorded step, one call at a time.
 abstract interface class MovementUploader {
   /// Uploads [clip] and returns a non-empty analysis id.
   ///
   /// Report progress as 0.0–1.0. Throw any error on failure; the package
-  /// shows a Retry button. Retry policy (attempts, backoff) is the uploader's
+  /// offers a Retry. Retry policy (attempts, backoff) is the uploader's
   /// job. When [cancellation] fires, stop as soon as possible; anything
   /// returned or thrown afterwards is ignored.
   Future<String> upload(

@@ -2,7 +2,8 @@ import 'capture_step.dart';
 import 'support_report.dart';
 
 enum MovementCaptureStatus {
-  /// At least one step was recorded and uploaded.
+  /// The session reached its end and every recorded step was uploaded.
+  /// (Skipped steps have no analysis ID.)
   completed,
 
   /// The user or operator left before finishing.

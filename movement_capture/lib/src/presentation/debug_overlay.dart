@@ -21,12 +21,15 @@ class DebugMetricsPanel extends StatelessWidget {
                   ..sort((a, b) => a.likelihood.compareTo(b.likelihood)))
                 .first;
         final lines = [
+          'step: ${m.step.name}',
           'analyses/s: ${m.analysesPerSecond}',
           'rotation: ${m.rotationDegrees}°',
           'brightness: ${m.luma.mean.toStringAsFixed(0)}',
           'clipped: ${(m.luma.clippedFraction * 100).toStringAsFixed(0)}%',
           'centre/border: ${m.luma.centerToBorder.toStringAsFixed(2)}',
           'faces: ${m.faces}   persons: ${m.poses}',
+          if (m.faceWidthFraction != null)
+            'face width: ${(m.faceWidthFraction! * 100).toStringAsFixed(0)}%',
           if (weakest is LandmarkPoint)
             'weakest: ${weakest.name} ${weakest.likelihood.toStringAsFixed(2)}',
           'issues: ${m.issues.isEmpty ? 'none' : m.issues.map((i) => i.name).join(', ')}',

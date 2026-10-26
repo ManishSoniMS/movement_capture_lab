@@ -1,4 +1,4 @@
-import 'dart:ui' show Rect, lerpDouble;
+import 'dart:ui' show Offset, Rect, lerpDouble;
 
 /// The 33 ML Kit pose points. Names match `PoseLandmarkType` exactly, so the
 /// data layer maps by name and `domain` stays free of ML Kit.
@@ -163,7 +163,11 @@ class PosePoint {
 
 /// What the overlay draws for one analysed frame.
 class OverlayFrame {
-  const OverlayFrame({this.pose = const [], this.faces = const []});
+  const OverlayFrame({
+    this.pose = const [],
+    this.faces = const [],
+    this.faceContours = const [],
+  });
 
   static const OverlayFrame empty = OverlayFrame();
 
@@ -173,7 +177,11 @@ class OverlayFrame {
   /// Face boxes, normalised (0–1) in the upright image.
   final List<Rect> faces;
 
+  /// Face step only: contour polylines, normalised.
+  final List<List<Offset>> faceContours;
+
   /// Positions glide from [a] to [b]. Points new in [b] appear at once.
+  /// Contours are not interpolated (they change shape too often).
   static OverlayFrame lerp(OverlayFrame? a, OverlayFrame b, double t) {
     if (a == null || t >= 1) return b;
     final previous = {for (final p in a.pose) p.type: p};
@@ -195,6 +203,6 @@ class OverlayFrame {
               Rect.lerp(a.faces[i], b.faces[i], t)!,
           ]
         : b.faces;
-    return OverlayFrame(pose: pose, faces: faces);
+    return OverlayFrame(pose: pose, faces: faces, faceContours: b.faceContours);
   }
 }

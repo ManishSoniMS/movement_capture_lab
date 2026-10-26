@@ -60,4 +60,17 @@ void main() {
     await pluginVideos.delete(recursive: true);
     await storage.purgeAll();
   });
+
+  test('writeLandmarks stores the json under movement_capture/', () async {
+    final file = await storage.writeLandmarks('{"a":1}');
+    expect(file.parent.path, '${root.path}/movement_capture');
+    expect(file.path, endsWith('.json'));
+    expect(file.readAsStringSync(), '{"a":1}');
+  });
+
+  test('purgeAll removes landmarks files with our folder', () async {
+    final file = await storage.writeLandmarks('{}');
+    await storage.purgeAll();
+    expect(file.existsSync(), isFalse);
+  });
 }

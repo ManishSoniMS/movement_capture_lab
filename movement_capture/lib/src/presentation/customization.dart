@@ -3,16 +3,19 @@ import 'package:flutter/material.dart';
 import '../domain/camera_choice.dart';
 import '../domain/capture_issue.dart';
 import '../domain/capture_state.dart';
+import '../domain/capture_step.dart';
 
 /// Every user-facing string. English defaults; the host passes translations.
-/// Templates use {elapsed}, {total}, {percent} and {n} placeholders.
+/// Templates use {elapsed}, {total}, {percent}, {n} and {step} placeholders.
 class MovementCaptureStrings {
   const MovementCaptureStrings({
     this.issueMultiplePeople =
         'Only one person should be in view. Others, please step aside.',
     this.issueNoPerson = 'No one in view. Please stand inside the box.',
+    this.issueNoFace = 'No face in view. Please look at the camera.',
     this.issueOutOfFrame =
-        'Your whole body must be in view. Please step back or move to the centre.',
+        'Not fully in view. Please move to the centre of the box.',
+    this.issueFaceTooFar = 'Please come closer to the camera.',
     this.issueTooDark = 'Too dark. Please turn on more light.',
     this.issueTooBright =
         'Too much light. Please reduce the light or move away from the window.',
@@ -20,16 +23,15 @@ class MovementCaptureStrings {
         'Bright light is behind the patient. Please close the curtain or turn the light off.',
     this.interrupted =
         'Recording stopped. It will start again when this is fixed.',
-    this.hintIdle = 'Ask the patient to stand inside the box, then tap Start.',
     this.hintArmed = 'Waiting for the patient to be in position…',
     this.getReady = 'Get ready',
     this.recordingTemplate = 'Recording {elapsed} of {total} seconds',
     this.starting = 'Starting camera…',
     this.needsOperator =
         'Recording keeps stopping. Please check the position and the light, then tap Try again.',
-    this.uploadingTemplate = 'Sending video… {percent}%',
-    this.uploadFailed = 'Could not send the video. Tap Retry.',
-    this.completed = 'Video sent for analysis.',
+    this.uploadingTemplate = 'Sending videos… {percent}%',
+    this.uploadFailed = 'Some videos could not be sent. Tap Retry.',
+    this.completed = 'All videos sent for analysis.',
     this.cameraNone = 'No camera found. Check the USB cable, then tap Retry.',
     this.cameraPermissionDenied =
         'Camera access is off. Allow camera access for this app in Settings, then tap Retry.',
@@ -37,7 +39,7 @@ class MovementCaptureStrings {
         'This camera cannot check the video while recording. Choose another camera.',
     this.cameraOther =
         'The camera stopped working. Check the USB cable, then tap Retry.',
-    this.startRecording = 'Start recording',
+    this.startRecording = 'Start',
     this.cancel = 'Cancel',
     this.tryAgain = 'Try again',
     this.retry = 'Retry',
@@ -57,16 +59,32 @@ class MovementCaptureStrings {
     this.noLiveChecksNotice =
         'This device cannot check the video while recording. Please stay inside the box until recording ends.',
     this.openSettings = 'Open Settings',
+    this.stepTitleFullBody = 'Full body',
+    this.stepTitleFace = 'Face',
+    this.stepTitleHands = 'Hands',
+    this.stepTitleFeet = 'Feet',
+    this.stepInstructionFullBody =
+        'Ask the patient to stand inside the box, then tap Start.',
+    this.stepInstructionFace =
+        'Ask the patient to come close and look straight at the camera, then tap Start.',
+    this.stepInstructionHands =
+        'Ask the patient to hold both hands up to the camera, palms facing it and fingers spread, then tap Start.',
+    this.stepInstructionFeet =
+        'Point the camera at the patient\'s feet so both feet are inside the box, then tap Start.',
+    this.stepProgressTemplate = 'Step {n} of {total} · {step}',
+    this.stepSavedTemplate = 'Saved: {step}',
+    this.skipStep = 'Skip this step',
   });
 
   final String issueMultiplePeople;
   final String issueNoPerson;
+  final String issueNoFace;
   final String issueOutOfFrame;
+  final String issueFaceTooFar;
   final String issueTooDark;
   final String issueTooBright;
   final String issueBacklit;
   final String interrupted;
-  final String hintIdle;
   final String hintArmed;
   final String getReady;
   final String recordingTemplate;
@@ -98,11 +116,24 @@ class MovementCaptureStrings {
   final String useAnotherCamera;
   final String noLiveChecksNotice;
   final String openSettings;
+  final String stepTitleFullBody;
+  final String stepTitleFace;
+  final String stepTitleHands;
+  final String stepTitleFeet;
+  final String stepInstructionFullBody;
+  final String stepInstructionFace;
+  final String stepInstructionHands;
+  final String stepInstructionFeet;
+  final String stepProgressTemplate;
+  final String stepSavedTemplate;
+  final String skipStep;
 
   String issue(CaptureIssue i) => switch (i) {
         CaptureIssue.multiplePeople => issueMultiplePeople,
         CaptureIssue.noPerson => issueNoPerson,
+        CaptureIssue.noFace => issueNoFace,
         CaptureIssue.outOfFrame => issueOutOfFrame,
+        CaptureIssue.faceTooFar => issueFaceTooFar,
         CaptureIssue.tooDark => issueTooDark,
         CaptureIssue.tooBright => issueTooBright,
         CaptureIssue.backlit => issueBacklit,
@@ -126,6 +157,30 @@ class MovementCaptureStrings {
         : single;
   }
 
+  String stepTitle(CaptureStep s) => switch (s) {
+        CaptureStep.fullBody => stepTitleFullBody,
+        CaptureStep.face => stepTitleFace,
+        CaptureStep.hands => stepTitleHands,
+        CaptureStep.feet => stepTitleFeet,
+      };
+
+  String stepInstruction(CaptureStep s) => switch (s) {
+        CaptureStep.fullBody => stepInstructionFullBody,
+        CaptureStep.face => stepInstructionFace,
+        CaptureStep.hands => stepInstructionHands,
+        CaptureStep.feet => stepInstructionFeet,
+      };
+
+  /// [index] is 0-based.
+  String stepProgress(int index, int total, CaptureStep s) =>
+      stepProgressTemplate
+          .replaceAll('{n}', '${index + 1}')
+          .replaceAll('{total}', '$total')
+          .replaceAll('{step}', stepTitle(s));
+
+  String stepSaved(CaptureStep s) =>
+      stepSavedTemplate.replaceAll('{step}', stepTitle(s));
+
   String recording(int elapsed, int total) => recordingTemplate
       .replaceAll('{elapsed}', '$elapsed')
       .replaceAll('{total}', '$total');
@@ -139,7 +194,9 @@ class MovementCaptureIcons {
   const MovementCaptureIcons({
     this.multiplePeople = Icons.group_outlined,
     this.noPerson = Icons.person_off_outlined,
+    this.noFace = Icons.face_retouching_off,
     this.outOfFrame = Icons.crop_free,
+    this.faceTooFar = Icons.zoom_in,
     this.tooDark = Icons.brightness_low,
     this.tooBright = Icons.wb_sunny_outlined,
     this.backlit = Icons.flare,
@@ -154,11 +211,19 @@ class MovementCaptureIcons {
     this.selectedCamera = Icons.check_circle,
     this.refresh = Icons.refresh,
     this.info = Icons.info_outline,
+    this.stepFullBody = Icons.accessibility_new,
+    this.stepFace = Icons.face,
+    this.stepHands = Icons.back_hand_outlined,
+    this.stepFeet = Icons.directions_walk,
+    this.skipStep = Icons.skip_next,
+    this.saved = Icons.check,
   });
 
   final IconData multiplePeople;
   final IconData noPerson;
+  final IconData noFace;
   final IconData outOfFrame;
+  final IconData faceTooFar;
   final IconData tooDark;
   final IconData tooBright;
   final IconData backlit;
@@ -173,14 +238,29 @@ class MovementCaptureIcons {
   final IconData selectedCamera;
   final IconData refresh;
   final IconData info;
+  final IconData stepFullBody;
+  final IconData stepFace;
+  final IconData stepHands;
+  final IconData stepFeet;
+  final IconData skipStep;
+  final IconData saved;
 
   IconData issue(CaptureIssue i) => switch (i) {
         CaptureIssue.multiplePeople => multiplePeople,
         CaptureIssue.noPerson => noPerson,
+        CaptureIssue.noFace => noFace,
         CaptureIssue.outOfFrame => outOfFrame,
+        CaptureIssue.faceTooFar => faceTooFar,
         CaptureIssue.tooDark => tooDark,
         CaptureIssue.tooBright => tooBright,
         CaptureIssue.backlit => backlit,
+      };
+
+  IconData step(CaptureStep s) => switch (s) {
+        CaptureStep.fullBody => stepFullBody,
+        CaptureStep.face => stepFace,
+        CaptureStep.hands => stepHands,
+        CaptureStep.feet => stepFeet,
       };
 }
 

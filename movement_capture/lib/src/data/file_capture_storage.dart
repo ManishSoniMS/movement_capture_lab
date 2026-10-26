@@ -35,7 +35,7 @@ class FileCaptureStorage implements CaptureStorage {
   Future<File> adopt(String rawPath) async {
     final dir = await _sessionDir();
     final target = '${dir.path}${Platform.pathSeparator}'
-        'capture_${DateTime.now().millisecondsSinceEpoch}.mp4';
+        'capture_${DateTime.now().microsecondsSinceEpoch}.mp4';
     final source = File(rawPath);
     try {
       return await source.rename(target);
@@ -44,6 +44,14 @@ class FileCaptureStorage implements CaptureStorage {
       await deletePath(rawPath);
       return copy;
     }
+  }
+
+  @override
+  Future<File> writeLandmarks(String json) async {
+    final dir = await _sessionDir();
+    final file = File('${dir.path}${Platform.pathSeparator}'
+        'landmarks_${DateTime.now().microsecondsSinceEpoch}.json');
+    return file.writeAsString(json, flush: true);
   }
 
   @override

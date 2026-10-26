@@ -22,7 +22,7 @@ class MockUploader implements MovementUploader {
       onProgress(i / 10);
     }
     if (fail) throw Exception('Simulated upload failure');
-    return 'mock-${clip.capturedAtUtc.millisecondsSinceEpoch}';
+    return 'mock-${clip.step.name}-${clip.capturedAtUtc.millisecondsSinceEpoch}';
   }
 }
 
@@ -56,28 +56,31 @@ class InspectionUploader implements MovementUploader {
     required UploadCancellation cancellation,
   }) async {
     final dir = await directory();
-    final name = 'clip_${clip.capturedAtUtc.millisecondsSinceEpoch}'
+    final base = 'session_${clip.sessionId.substring(0, 8)}'
+        '_${clip.stepIndex + 1}-${clip.step.name}'
         '_${clip.platform}_${clip.cameraKind}'
         '_mirrored-${clip.fileMirrored}_checks-${clip.liveChecks}'
-        '_${clip.duration.inMilliseconds}ms.mp4';
+        '_${clip.duration.inMilliseconds}ms';
     onProgress(0.3);
-    await clip.file.copy('${dir.path}/$name');
+    await clip.file.copy('${dir.path}/$base.mp4');
+    if (clip.landmarksFile != null) {
+      await clip.landmarksFile!.copy('${dir.path}/$base.landmarks.json');
+    }
     if (cancellation.isCancelled) throw StateError('cancelled');
     onProgress(1);
-    return 'inspection:$name';
+    return 'inspection:$base';
   }
 }
 
 /// Real HTTP upload following the backend contract. The kiosk app's own
 /// uploader is built the same way, but on its shared Dio client.
 ///
-/// Contract:
+/// Contract (one request per step):
 ///   POST <endpointUrl>  multipart/form-data
-///   fields: video (video/mp4), durationMs, resolutionPreset, capturedAt
-///           (ISO-8601 UTC), platform ("android"|"ios"),
-///           cameraKind ("external"|"front"|"back"), fileMirrored and
-///           liveChecks ("true"|"false"), plus every metadata entry
-///           (e.g. chatSessionId)
+///   files:  video (video/mp4), landmarks (application/json, optional)
+///   fields: durationMs, resolutionPreset, capturedAt (ISO-8601 UTC),
+///           platform, cameraKind, fileMirrored, liveChecks,
+///           sessionId, step, stepIndex, stepCount, + every metadata entry
 ///   200/201 → {"analysisId": "mv_01JB7Q2K9X4T3R8N5C6D"}
 class HttpUploader implements MovementUploader {
   HttpUploader({required this.endpointUrl, this.bearerToken});
@@ -105,11 +108,13 @@ class HttpUploader implements MovementUploader {
             filename: 'movement.mp4',
             contentType: DioMediaType.parse('video/mp4'),
           ),
-          'durationMs': clip.duration.inMilliseconds,
-          'resolutionPreset': clip.resolution.name,
-          'capturedAt': clip.capturedAtUtc.toIso8601String(),
-          ...clip.metadata,
-          ...clip.deviceFields,
+          if (clip.landmarksFile != null)
+            'landmarks': await MultipartFile.fromFile(
+              clip.landmarksFile!.path,
+              filename: 'landmarks.json',
+              contentType: DioMediaType.parse('application/json'),
+            ),
+          ...clip.formFields,
         });
 
         final response = await _dio.post<Map<String, dynamic>>(

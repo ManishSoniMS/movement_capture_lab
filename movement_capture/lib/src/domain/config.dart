@@ -2,12 +2,26 @@ import 'package:camera/camera.dart';
 import 'package:flutter/services.dart';
 
 import 'camera_choice.dart';
+import 'capture_step.dart';
 
 enum CaptureOrientation { auto, landscape, portrait }
 
 class MovementCaptureConfig {
   MovementCaptureConfig({
     Duration maxDuration = const Duration(seconds: 30),
+    this.steps = const [
+      CaptureStep.fullBody,
+      CaptureStep.face,
+      CaptureStep.hands,
+      CaptureStep.feet,
+    ],
+    this.stepDurations = const {},
+    this.skippableSteps = const {
+      CaptureStep.face,
+      CaptureStep.hands,
+      CaptureStep.feet,
+    },
+    this.stepCameras = const {},
     this.countdown = const Duration(seconds: 3),
     this.stableBeforeStart = const Duration(milliseconds: 1500),
     this.violationGrace = const Duration(milliseconds: 400),
@@ -24,6 +38,7 @@ class MovementCaptureConfig {
     this.skeletonMinLikelihood = 0.5,
     this.safeZoneInset = 0.075,
     this.minLandmarkLikelihood = 0.5,
+    this.faceMinWidthFraction = 0.28,
     this.minMeanLuma = 60,
     this.maxMeanLuma = 200,
     this.maxClippedFraction = 0.25,
@@ -44,7 +59,22 @@ class MovementCaptureConfig {
   /// tablets for [CaptureOrientation.auto] and for the wide layout.
   static const double tabletShortestSide = 600;
 
+  /// Duration of the fullBody step (the "system input"), clamped to 5–30 s.
   final Duration maxDuration;
+
+  /// Steps in recording order.
+  final List<CaptureStep> steps;
+
+  /// Durations for the other steps (default 10 s each), clamped to 5–30 s.
+  final Map<CaptureStep, Duration> stepDurations;
+
+  /// Steps that may be skipped.
+  final Set<CaptureStep> skippableSteps;
+
+  /// Optional camera type to switch to when a step begins. Falls back to the
+  /// current camera when none of that kind exists.
+  final Map<CaptureStep, CameraKind> stepCameras;
+
   final Duration countdown;
   final Duration stableBeforeStart;
   final Duration violationGrace;
@@ -82,6 +112,9 @@ class MovementCaptureConfig {
   /// Fraction of width/height kept clear at each edge (wide-lens distortion).
   final double safeZoneInset;
   final double minLandmarkLikelihood;
+
+  /// Face step: face box width must be at least this share of frame width.
+  final double faceMinWidthFraction;
   final int minMeanLuma;
   final int maxMeanLuma;
   final double maxClippedFraction;
@@ -96,6 +129,25 @@ class MovementCaptureConfig {
 
   /// iOS's camera plugin already mirrors the front camera (preview and file),
   /// so mirroring it again would flip it back.
+  /// [steps] without duplicates, never empty.
+  List<CaptureStep> get effectiveSteps {
+    final seen = <CaptureStep>{};
+    final result = [
+      for (final s in steps)
+        if (seen.add(s)) s,
+    ];
+    return result.isEmpty ? const [CaptureStep.fullBody] : result;
+  }
+
+  /// How long [step] records: [maxDuration] for the full body, 10 s for the
+  /// others unless [stepDurations] says otherwise. Always clamped.
+  Duration durationFor(CaptureStep step) {
+    if (step == CaptureStep.fullBody && !stepDurations.containsKey(step)) {
+      return maxDuration;
+    }
+    return _clampDuration(stepDurations[step] ?? step.defaultDuration);
+  }
+
   bool mirrorPreviewFor(CameraKind kind, TargetPlatform platform) =>
       switch (kind) {
         CameraKind.external => mirrorExternalPreview ?? true,

@@ -15,6 +15,8 @@ final class CameraUnavailable extends CaptureState {
   final CameraFailure reason;
 }
 
+/// Preview running, checks running. Not armed = waiting for Start (the
+/// step's instruction is shown). Armed = waiting for good conditions.
 final class Checking extends CaptureState {
   const Checking({this.issue, this.armed = false, this.interrupted = false});
 
@@ -53,21 +55,25 @@ final class Recording extends CaptureState {
   }
 }
 
+/// Too many automatic restarts in the current step.
 final class NeedsOperator extends CaptureState {
   const NeedsOperator(this.lastIssue);
   final CaptureIssue lastIssue;
 }
 
-final class Uploading extends CaptureState {
-  const Uploading(this.progress);
+/// All steps recorded or skipped; uploads still running.
+final class Finishing extends CaptureState {
+  const Finishing(this.progress);
   final double progress;
 }
 
-final class UploadFailed extends CaptureState {
-  const UploadFailed();
+/// All steps recorded or skipped; some uploads failed.
+final class FinishFailed extends CaptureState {
+  const FinishFailed(this.failedCount);
+  final int failedCount;
 }
 
-final class Completed extends CaptureState {
-  const Completed(this.analysisId);
-  final String analysisId;
+/// Every recorded step uploaded.
+final class SessionComplete extends CaptureState {
+  const SessionComplete();
 }

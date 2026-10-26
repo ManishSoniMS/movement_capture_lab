@@ -51,9 +51,32 @@ if (report.canRun) {
     uploader: MyUploader(),
   );
   // result.status: completed | cancelled | unsupported
+  // result.steps: one entry per configured step (analysisId or skipped)
   // result.analysisId: first analysis id, or null
 }
 ```
+
+## Steps
+
+A session records up to four steps one after another on the same screen, in
+`config.steps` order (default `fullBody, face, hands, feet`):
+
+| Step     | Live checks                                             | Tracking data uploaded (`landmarks.json`)                  |
+|----------|---------------------------------------------------------|------------------------------------------------------------|
+| fullBody | person in frame, one person only, lighting              | all 33 pose points per frame, grouped by region            |
+| face     | one face, inside the box, big enough, lighting          | face box, landmarks, contours, head angles                 |
+| hands    | lighting only                                           | none                                                       |
+| feet     | lighting only                                           | none                                                       |
+
+ML Kit has no hand or foot detector, so the hands and feet clips are **not
+position-verified**; the server must judge them. Each step is uploaded as soon
+as it is recorded, in the background; a short "Sending videos…" screen waits
+for what is still uploading. `skippableSteps` (default face, hands, feet) get a
+**Skip this step** button. `stepCameras` can switch camera on entering a step
+(for example `{CaptureStep.feet: CameraKind.back}`). Tracking data is sampled
+at the analysis rate (about 6-7 per second), each sample with a millisecond
+timestamp. Coordinates are normalised to the upright image; when `mirrored` is
+true they are mirrored with the video.
 
 `open` runs the same check itself and returns `unsupported` without opening
 the camera on a blocking problem. Blocking problems: wrong platform, old OS,
@@ -83,20 +106,28 @@ Future<String> upload(MovementClip clip,
      required UploadCancellation cancellation});
 ```
 
-Return a non-empty analysis id; throw on failure (the package shows Retry).
+Called once per recorded step, one at a time. Return a non-empty analysis id;
+throw on failure (the package shows Retry).
 Retry policy (attempts, backoff) is the uploader's job. Stop when
 `cancellation` fires. The package deletes the clip file after success.
 
 `MovementClip` also carries `platform` (`android`/`ios`), `cameraKind`
 (`external`/`front`/`back`), `fileMirrored` (true only for the iOS front
 camera) and `liveChecks` (false when the recording ran without quality
-checks). `clip.deviceFields` gives them as multipart strings.
+checks), plus `sessionId`, `step`, `stepIndex`, `stepCount` and the optional
+`landmarksFile`. `clip.formFields` gives every text field as multipart
+strings (metadata first; package fields win a name clash).
 
 ## MovementCaptureConfig fields (defaults)
 
 | Field                                                          | Default                                                                      |
 |----------------------------------------------------------------|------------------------------------------------------------------------------|
-| maxDuration                                                    | 30 s (clamped 5-30 s)                                                        |
+| maxDuration (fullBody step)                                    | 30 s (clamped 5-30 s)                                                        |
+| steps                                                          | [fullBody, face, hands, feet]                                                |
+| stepDurations                                                  | {} (other steps 10 s, clamped 5-30 s)                                        |
+| skippableSteps                                                 | {face, hands, feet}                                                          |
+| stepCameras                                                    | {}                                                                           |
+| faceMinWidthFraction                                           | 0.28                                                                         |
 | countdown                                                      | 3 s                                                                          |
 | stableBeforeStart                                              | 1500 ms                                                                      |
 | violationGrace                                                 | 400 ms                                                                       |
