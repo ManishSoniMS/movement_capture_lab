@@ -15,6 +15,9 @@ A new Flutter plugin project.
   s.source           = { :path => '.' }
   s.source_files = 'movement_capture/Sources/movement_capture/**/*'
   s.dependency 'Flutter'
+  s.dependency 'MediaPipeTasksVision', '~> 0.10'
+  s.static_framework = true
+  s.resource_bundles = { 'movement_capture_models' => ['Assets/hand_landmarker.task'] }
   s.platform = :ios, '15.5'
 
   # Flutter.framework does not contain a i386 slice.

@@ -3,6 +3,7 @@ import 'dart:ui' show Size;
 import 'capture_issue.dart';
 import 'capture_step.dart';
 import 'face_snapshot.dart';
+import 'hand_topology.dart';
 import 'luma_stats.dart';
 import 'pose_topology.dart';
 
@@ -42,6 +43,8 @@ class FrameMetrics {
     required this.analysesPerSecond,
     required this.rotationDegrees,
     this.faceWidthFraction,
+    this.hands = 0,
+    this.handTracking = false,
   });
   final CaptureStep step;
   final LumaStats luma;
@@ -56,6 +59,12 @@ class FrameMetrics {
 
   /// Face step: width of the found face as a share of the frame width.
   final double? faceWidthFraction;
+
+  /// Hands step: number of hands found.
+  final int hands;
+
+  /// True while MediaPipe hand tracking is active in this step.
+  final bool handTracking;
 }
 
 class FrameCheck {
@@ -69,6 +78,7 @@ class FrameCheck {
     this.pose = const [],
     this.faceCount = 0,
     this.face,
+    this.hands = const [],
   });
   final Set<CaptureIssue> issues;
   final DateTime at;
@@ -87,6 +97,9 @@ class FrameCheck {
 
   /// The single face found (face step), with landmarks and contours.
   final FaceSnapshot? face;
+
+  /// Hands step: tracked hands (21 points each).
+  final List<HandSnapshot> hands;
 
   CaptureIssue? get topIssue {
     for (final issue in CaptureIssue.values) {

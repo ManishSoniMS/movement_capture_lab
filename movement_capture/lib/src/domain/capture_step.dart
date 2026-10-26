@@ -12,8 +12,11 @@ enum CaptureStep {
   /// Runs a face detector (count only for fullBody; detailed for face).
   bool get usesFace => this == CaptureStep.fullBody || this == CaptureStep.face;
 
+  /// Runs MediaPipe hand tracking (if enabled).
+  bool get usesHands => this == CaptureStep.hands;
+
   /// Produces landmarks.json.
-  bool get recordsLandmarks => usesFace;
+  bool get recordsLandmarks => usesFace || usesHands;
 
   Duration get defaultDuration => this == CaptureStep.fullBody
       ? const Duration(seconds: 30)

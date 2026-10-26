@@ -184,4 +184,16 @@ void main() {
     expect(r.describe(), contains('canRun=false'));
     expect(r.toJson()['issues'], isA<List<Object?>>());
   });
+
+  test('hand tracking unavailable only warns', () {
+    final r = evaluateSupport(
+        platform: 'android',
+        native: _native(),
+        cameras: _goodCameras,
+        mlKitAvailable: true,
+        handTrackingAvailable: false);
+    expect(r.canRun, isTrue);
+    expect(r.readyNow, isTrue);
+    expect(r.has(SupportIssueCode.handTrackingUnavailable), isTrue);
+  });
 }

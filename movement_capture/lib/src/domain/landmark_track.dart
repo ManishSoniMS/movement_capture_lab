@@ -2,6 +2,7 @@ import 'dart:ui' show Size;
 
 import 'capture_step.dart';
 import 'face_snapshot.dart';
+import 'hand_topology.dart';
 import 'pose_topology.dart';
 
 /// Collects tracking samples during one recording and turns them into the
@@ -83,6 +84,38 @@ class LandmarkTrack {
               ],
           },
         },
+    });
+  }
+
+  /// hands step: up to two hands, 21 points each as [x, y, z].
+  void addHands({
+    required int tMs,
+    required List<HandSnapshot> hands,
+    required bool framesMirrored,
+    required Size image,
+    required int rotationDegrees,
+  }) {
+    _image ??= image;
+    _rotation ??= rotationDegrees;
+    _frames.add({
+      't': tMs,
+      'hands': [
+        for (final h in hands)
+          if (h.isComplete)
+            {
+              'handedness': h.handedness,
+              'side': personSide(h.handedness, framesMirrored: framesMirrored),
+              'score': _r(h.score),
+              'points': {
+                for (var i = 0; i < h.points.length; i++)
+                  handPointNames[i]: [
+                    _r(h.points[i].dx),
+                    _r(h.points[i].dy),
+                    _r(h.depth.length > i ? h.depth[i] : 0),
+                  ],
+              },
+            },
+      ],
     });
   }
 

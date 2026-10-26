@@ -1,5 +1,7 @@
 import 'dart:ui' show Offset, Rect, lerpDouble;
 
+import 'hand_topology.dart';
+
 /// The 33 ML Kit pose points. Names match `PoseLandmarkType` exactly, so the
 /// data layer maps by name and `domain` stays free of ML Kit.
 enum PoseJoint {
@@ -167,6 +169,7 @@ class OverlayFrame {
     this.pose = const [],
     this.faces = const [],
     this.faceContours = const [],
+    this.hands = const [],
   });
 
   static const OverlayFrame empty = OverlayFrame();
@@ -179,6 +182,9 @@ class OverlayFrame {
 
   /// Face step only: contour polylines, normalised.
   final List<List<Offset>> faceContours;
+
+  /// Hands step only: tracked hands (21 points each).
+  final List<HandSnapshot> hands;
 
   /// Positions glide from [a] to [b]. Points new in [b] appear at once.
   /// Contours are not interpolated (they change shape too often).
@@ -203,6 +209,17 @@ class OverlayFrame {
               Rect.lerp(a.faces[i], b.faces[i], t)!,
           ]
         : b.faces;
-    return OverlayFrame(pose: pose, faces: faces, faceContours: b.faceContours);
+    final hands = a.hands.length == b.hands.length
+        ? [
+            for (var i = 0; i < b.hands.length; i++)
+              HandSnapshot.lerp(a.hands[i], b.hands[i], t),
+          ]
+        : b.hands;
+    return OverlayFrame(
+      pose: pose,
+      faces: faces,
+      faceContours: b.faceContours,
+      hands: hands,
+    );
   }
 }

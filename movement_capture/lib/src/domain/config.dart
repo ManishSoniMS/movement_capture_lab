@@ -45,6 +45,8 @@ class MovementCaptureConfig {
     this.safeZoneInset = 0.075,
     this.minLandmarkLikelihood = 0.5,
     this.faceMinWidthFraction = 0.28,
+    this.handTracking = true,
+    this.requireBothHands = true,
     this.minMeanLuma = 60,
     this.maxMeanLuma = 200,
     this.maxClippedFraction = 0.25,
@@ -143,6 +145,12 @@ class MovementCaptureConfig {
 
   /// Face step: face box width must be at least this share of frame width.
   final double faceMinWidthFraction;
+
+  /// Hands step: track hands with MediaPipe (21 points per hand).
+  final bool handTracking;
+
+  /// Hands step: both hands must be visible.
+  final bool requireBothHands;
   final int minMeanLuma;
   final int maxMeanLuma;
   final double maxClippedFraction;

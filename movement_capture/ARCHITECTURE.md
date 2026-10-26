@@ -49,6 +49,8 @@ lib/
       pose_topology.dart            regions, skeleton lines, overlay frames
       landmark_track.dart           builds landmarks.json
       face_snapshot.dart            face box, landmarks, contours, head angles
+      hand_topology.dart            hand points and lines, HandSnapshot, personSide
+      frame_downscaler.dart         camera frame → small upright RGBA image
     data/                        the only code touching plugins and files
       mlkit_frame_analyzer.dart     FrameAnalyzer with ML Kit (pose, face) + brightness
       file_capture_storage.dart     CaptureStorage on <cache>/movement_capture/
@@ -121,7 +123,8 @@ camera frame (Android NV21 / iOS BGRA, ~30 fps)
       ├─ step detectors:
       │    fullBody: pose (stream) + fast face count
       │    face:     face detector with landmarks + contours
-      │    hands/feet: none
+      │    hands:    downscale to upright RGBA ≤ 256 px → native MediaPipe Hand Landmarker (VIDEO mode)
+      │    feet:     none
       └─ FrameCheck: issues, overlay points, pose points, face snapshot
           ├─ QualityTimer: confirm after 0.4 s bad / 1.5 s good
           ├─ overlay → SkeletonLayer (glides between samples)
@@ -139,6 +142,7 @@ camera frame (Android NV21 / iOS BGRA, ~30 fps)
 | Camera implementation     | `camera_android` (Camera2), a direct dependency of the host | `camera_avfoundation`, patched to list `.external` devices (iPadOS 17+) |
 | Frame format              | NV21                                                        | BGRA8888                                                                |
 | Front camera              | System mirrors the preview only; the skeleton is flipped to match | Plugin mirrors preview, frames and file together; no extra flip   |
+| Hand tracking             | `tasks-vision` (Google Maven), model from assets via buffer | `MediaPipeTasksVision` pod, model in resource bundle `movement_capture_models` |
 | Plugin's recording folder | Cache root (`REC*.mp4`)                                     | `tmp/camera/videos/`                                                    |
 | Keep screen on            | `FLAG_KEEP_SCREEN_ON`, restored on close                    | `isIdleTimerDisabled`, restored on close                                |
 | Permission declared       | Manifest `CAMERA` (checked natively)                        | `NSCameraUsageDescription` (checked natively)                           |
@@ -149,7 +153,7 @@ camera frame (Android NV21 / iOS BGRA, ~30 fps)
 |------------------------|----------------------------------------|---------------------------------------------------------------------------|
 | Plugin's raw recording | Camera plugin, while recording         | Moved into `movement_capture/` on finish, or deleted on restart / failure |
 | `capture_*.mp4`        | When a step finishes                   | After its upload succeeds; on session cancel / teardown; by `purgeAll()`  |
-| `landmarks_*.json`     | When a full-body or face step finishes | Same as its video                                                         |
+| `landmarks_*.json`     | When a full-body, face or hands step finishes | Same as its video                                                         |
 
 `purgeAll()` deletes our folder, any `.mp4` in the cache root, and the iOS plugin folder. It runs **only** at session start, at teardown, and when the host calls it (logout / login). Running it mid-session would delete clips still waiting to upload.
 
@@ -225,6 +229,34 @@ Each point is `[x, y, likelihood]`. Names are ML Kit `PoseLandmarkType` names. A
 ```
 
 `box` = `[left, top, right, bottom]`. `headEuler` = `[x, y, z]` in degrees (each may be null). `face` is absent from a frame unless exactly one face was found. Landmark names are ML Kit `FaceLandmarkType` names; contour names are `FaceContourType` names.
+
+**hands**:
+
+```json
+{
+  "format": "movement_capture.landmarks",
+  "version": 1,
+  "sessionId": "3f9c0e7a5b2d4c1e8f6a9b0c1d2e3f40",
+  "step": "hands",
+  "image": { "width": 720, "height": 1280, "rotationDegrees": 90, "mirrored": false },
+  "sampleCount": 1,
+  "frames": [
+    {
+      "t": 0,
+      "hands": [
+        {
+          "handedness": "Left",
+          "side": "right",
+          "score": 0.9731,
+          "points": { "wrist": [0.4120, 0.7011, 0.0], "indexTip": [0.3804, 0.4120, -0.0412] }
+        }
+      ]
+    }
+  ]
+}
+```
+
+`handedness` is MediaPipe's raw label, which assumes a mirrored image. `side` is the person's own hand, corrected using `image.mirrored`. Point names: `wrist`, `thumbCmc`…`pinkyTip` (21, see `hand_topology.dart`). `z` is relative depth; smaller is closer to the camera.
 
 **Versioning:** any incompatible change increments `version` and is recorded in CHANGELOG.md and DECISIONS.md.
 

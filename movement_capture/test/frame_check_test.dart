@@ -33,13 +33,15 @@ void main() {
     expect(check.topIssue, CaptureIssue.outOfFrame);
   });
 
-  test('face issues rank between person and lighting issues', () {
+  test('face and hand issues rank between person and lighting issues', () {
     expect(
       CaptureIssue.values,
       [
         CaptureIssue.multiplePeople,
         CaptureIssue.noPerson,
         CaptureIssue.noFace,
+        CaptureIssue.noHands,
+        CaptureIssue.oneHand,
         CaptureIssue.outOfFrame,
         CaptureIssue.faceTooFar,
         CaptureIssue.tooDark,

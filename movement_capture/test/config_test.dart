@@ -154,4 +154,31 @@ void main() {
     expect(MovementCaptureConfig(voiceInAssisted: true).speaks, isTrue);
     expect(MovementCaptureConfig(mode: CaptureMode.selfGuided).speaks, isTrue);
   });
+
+  test('hand tracking defaults on and needs both hands', () {
+    final c = MovementCaptureConfig();
+    expect(c.handTracking, isTrue);
+    expect(c.requireBothHands, isTrue);
+  });
+
+  test('hands step records landmarks and uses MediaPipe', () {
+    expect(CaptureStep.hands.usesHands, isTrue);
+    expect(CaptureStep.hands.recordsLandmarks, isTrue);
+    expect(CaptureStep.feet.usesHands, isFalse);
+    expect(CaptureStep.feet.recordsLandmarks, isFalse);
+  });
+
+  test('hand issues rank after noFace and before outOfFrame', () {
+    final order = CaptureIssue.values;
+    expect(order.indexOf(CaptureIssue.noHands), greaterThan(order.indexOf(CaptureIssue.noFace)));
+    expect(order.indexOf(CaptureIssue.oneHand), lessThan(order.indexOf(CaptureIssue.outOfFrame)));
+  });
+
+  test('hand issues have default text and icons', () {
+    const strings = MovementCaptureStrings();
+    const icons = MovementCaptureIcons();
+    expect(strings.issue(CaptureIssue.noHands), isNotEmpty);
+    expect(strings.issue(CaptureIssue.oneHand), contains('one hand'));
+    expect(icons.issue(CaptureIssue.noHands), isNot(icons.issue(CaptureIssue.oneHand)));
+  });
 }

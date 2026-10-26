@@ -824,6 +824,13 @@ class MovementCaptureController extends ChangeNotifier {
           rotationDegrees: check.rotationDegrees,
         );
       case CaptureStep.hands:
+        track.addHands(
+          tMs: t,
+          hands: check.hands,
+          framesMirrored: _fileMirrored,
+          image: check.uprightSize,
+          rotationDegrees: check.rotationDegrees,
+        );
       case CaptureStep.feet:
         break;
     }

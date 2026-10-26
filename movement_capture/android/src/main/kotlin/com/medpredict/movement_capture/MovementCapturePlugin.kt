@@ -22,6 +22,7 @@ import io.flutter.plugin.common.MethodChannel
 class MovementCapturePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware {
     private lateinit var channel: MethodChannel
     private lateinit var context: Context
+    private lateinit var hands: HandTracker
     private var activity: Activity? = null
 
     /** Whether the window already had KEEP_SCREEN_ON before we set it. */
@@ -29,12 +30,14 @@ class MovementCapturePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Ac
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         context = binding.applicationContext
+        hands = HandTracker(context)
         channel = MethodChannel(binding.binaryMessenger, "movement_capture/native")
         channel.setMethodCallHandler(this)
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel.setMethodCallHandler(null)
+        hands.close()
     }
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
@@ -60,6 +63,21 @@ class MovementCapturePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Ac
                 "openAppSettings" -> result.success(openAppSettings())
                 "setKeepScreenOn" -> {
                     setKeepScreenOn(call.argument<Boolean>("on") == true)
+                    result.success(null)
+                }
+                "handTrackingAvailable" -> hands.available(result)
+                "detectHands" -> {
+                    val rgba = call.argument<ByteArray>("rgba")
+                    val width = call.argument<Int>("width") ?: 0
+                    val height = call.argument<Int>("height") ?: 0
+                    if (rgba == null || width <= 0 || height <= 0 || rgba.size < width * height * 4) {
+                        result.error("BAD_ARGS", "rgba/width/height invalid", null)
+                    } else {
+                        hands.detect(rgba, width, height, result)
+                    }
+                }
+                "closeHands" -> {
+                    hands.close()
                     result.success(null)
                 }
                 else -> result.notImplemented()

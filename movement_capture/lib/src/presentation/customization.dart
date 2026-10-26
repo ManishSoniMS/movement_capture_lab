@@ -17,6 +17,8 @@ class MovementCaptureStrings {
     this.issueOutOfFrame =
         'Not fully in view. Please move to the centre of the box.',
     this.issueFaceTooFar = 'Please come closer to the camera.',
+    this.issueNoHands = 'Show both hands to the camera.',
+    this.issueOneHand = 'Only one hand is visible. Please show both hands.',
     this.issueTooDark = 'Too dark. Please turn on more light.',
     this.issueTooBright =
         'Too much light. Please reduce the light or move away from the window.',
@@ -103,6 +105,8 @@ class MovementCaptureStrings {
   final String issueNoFace;
   final String issueOutOfFrame;
   final String issueFaceTooFar;
+  final String issueNoHands;
+  final String issueOneHand;
   final String issueTooDark;
   final String issueTooBright;
   final String issueBacklit;
@@ -170,6 +174,8 @@ class MovementCaptureStrings {
         CaptureIssue.noFace => issueNoFace,
         CaptureIssue.outOfFrame => issueOutOfFrame,
         CaptureIssue.faceTooFar => issueFaceTooFar,
+        CaptureIssue.noHands => issueNoHands,
+        CaptureIssue.oneHand => issueOneHand,
         CaptureIssue.tooDark => issueTooDark,
         CaptureIssue.tooBright => issueTooBright,
         CaptureIssue.backlit => issueBacklit,
@@ -257,6 +263,8 @@ class MovementCaptureIcons {
     this.noFace = Icons.face_retouching_off,
     this.outOfFrame = Icons.crop_free,
     this.faceTooFar = Icons.zoom_in,
+    this.noHands = Icons.do_not_touch_outlined,
+    this.oneHand = Icons.front_hand_outlined,
     this.tooDark = Icons.brightness_low,
     this.tooBright = Icons.wb_sunny_outlined,
     this.backlit = Icons.flare,
@@ -286,6 +294,8 @@ class MovementCaptureIcons {
   final IconData noFace;
   final IconData outOfFrame;
   final IconData faceTooFar;
+  final IconData noHands;
+  final IconData oneHand;
   final IconData tooDark;
   final IconData tooBright;
   final IconData backlit;
@@ -315,6 +325,8 @@ class MovementCaptureIcons {
         CaptureIssue.noFace => noFace,
         CaptureIssue.outOfFrame => outOfFrame,
         CaptureIssue.faceTooFar => faceTooFar,
+        CaptureIssue.noHands => noHands,
+        CaptureIssue.oneHand => oneHand,
         CaptureIssue.tooDark => tooDark,
         CaptureIssue.tooBright => tooBright,
         CaptureIssue.backlit => backlit,

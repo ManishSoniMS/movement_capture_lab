@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../domain/frame_metrics.dart';
+import '../domain/hand_topology.dart';
 import '../domain/pose_topology.dart';
 
 class SkeletonColors {
@@ -234,6 +235,22 @@ class _SkeletonPainter extends CustomPainter {
           ..strokeWidth = stroke * 0.6
           ..color = colors.face;
         canvas.drawPath(path, thin);
+      }
+
+      for (final hand in frame.hands) {
+        if (!hand.isComplete) continue;
+        final pts = [for (final p in hand.points) at(p.dx, p.dy)];
+        line.color = colors.hand;
+        for (final (a, b) in handConnections) {
+          canvas.drawLine(pts[a], pts[b], outline);
+          canvas.drawLine(pts[a], pts[b], line);
+        }
+        dot.color = colors.hand;
+        dotOutline.color = Colors.black.withValues(alpha: 0.45);
+        for (final o in pts) {
+          canvas.drawCircle(o, radius * 0.8 + 1.5, dotOutline);
+          canvas.drawCircle(o, radius * 0.8, dot);
+        }
       }
     }
 

@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../domain/frame_downscaler.dart';
+import '../domain/hand_topology.dart';
 import '../domain/native_support_info.dart';
 
 /// The only Dart code that talks to the plugin's native side.
@@ -29,5 +31,35 @@ abstract final class NativeBridge {
     } catch (e) {
       debugPrint('movement_capture: setKeepScreenOn failed: $e');
     }
+  }
+
+  /// Loads the hand model once. Never throws.
+  static Future<bool> handTrackingAvailable() async {
+    try {
+      return await _channel.invokeMethod<bool>('handTrackingAvailable') ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Throws on failure; the analyzer handles it.
+  static Future<List<HandSnapshot>> detectHands(RgbaFrame frame) async {
+    final raw = await _channel.invokeListMethod<Object?>('detectHands', {
+      'rgba': frame.bytes,
+      'width': frame.width,
+      'height': frame.height,
+    });
+    return [
+      for (final h in raw ?? const [])
+        if (h is Map) HandSnapshot.fromNative(h.cast<Object?, Object?>()),
+    ];
+  }
+
+  /// Releases the hand model. Never throws.
+  static Future<void> closeHands() async {
+    try {
+      await _channel.invokeMethod<void>('closeHands');
+    } catch (_) {}
   }
 }

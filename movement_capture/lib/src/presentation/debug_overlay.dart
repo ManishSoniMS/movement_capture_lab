@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../domain/capture_step.dart';
 import '../domain/frame_metrics.dart';
 
 /// Live numbers for on-site threshold tuning.
@@ -28,6 +29,8 @@ class DebugMetricsPanel extends StatelessWidget {
           'clipped: ${(m.luma.clippedFraction * 100).toStringAsFixed(0)}%',
           'centre/border: ${m.luma.centerToBorder.toStringAsFixed(2)}',
           'faces: ${m.faces}   persons: ${m.poses}',
+          if (m.step == CaptureStep.hands)
+            'hands: ${m.hands}${m.handTracking ? '' : ' (tracking off)'}',
           if (m.faceWidthFraction != null)
             'face width: ${(m.faceWidthFraction! * 100).toStringAsFixed(0)}%',
           if (weakest is LandmarkPoint)

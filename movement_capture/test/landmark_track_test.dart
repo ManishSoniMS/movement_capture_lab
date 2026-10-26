@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movement_capture/src/domain/capture_step.dart';
 import 'package:movement_capture/src/domain/face_snapshot.dart';
+import 'package:movement_capture/src/domain/hand_topology.dart';
 import 'package:movement_capture/src/domain/landmark_track.dart';
 import 'package:movement_capture/src/domain/pose_topology.dart';
 
@@ -106,5 +107,29 @@ void main() {
     );
     expect(track.isEmpty, isFalse);
     expect(track.length, 1);
+  });
+
+  test('hands: two hands, 21 points each, with side', () {
+    final hand = HandSnapshot(
+      handedness: 'Left',
+      score: 0.9,
+      points: List.generate(21, (i) => Offset(i / 40, 0.5)),
+      depth: List.filled(21, -0.01),
+    );
+    final track = LandmarkTrack(sessionId: 's', step: CaptureStep.hands)
+      ..addHands(
+        tMs: 0,
+        hands: [hand, hand],
+        framesMirrored: false,
+        image: const Size(720, 1280),
+        rotationDegrees: 90,
+      );
+    final json = jsonDecode(jsonEncode(track.toJson(mirrored: false)))
+        as Map<String, dynamic>;
+    final hands = ((json['frames'] as List).first as Map)['hands'] as List;
+    expect(hands.length, 2);
+    expect((hands.first as Map)['side'], 'right');
+    expect(((hands.first as Map)['points'] as Map).length, 21);
+    expect((hands.first as Map)['points']['indexTip'], [0.2, 0.5, -0.01]);
   });
 }

@@ -219,6 +219,16 @@ class _HomePageState extends State<HomePage> {
             value: _s.feetUseBackCamera,
             onChanged: (v) => setState(() => _s.feetUseBackCamera = v),
           ),
+          SwitchListTile(
+            title: const Text('Hand tracking (MediaPipe) in the hands step'),
+            value: _s.handTracking,
+            onChanged: (v) => setState(() => _s.handTracking = v),
+          ),
+          SwitchListTile(
+            title: const Text('Require both hands'),
+            value: _s.requireBothHands,
+            onChanged: (v) => setState(() => _s.requireBothHands = v),
+          ),
           const _Section('Mode and voice'),
           ListTile(
             title: const Text('Mode'),

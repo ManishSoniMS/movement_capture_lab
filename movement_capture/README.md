@@ -101,6 +101,8 @@ Both lines must be in **your app's** pubspec. Flutter ignores them inside a libr
 
 `ios/Podfile`: `platform :ios, '15.5'`. Also set the Runner target's iOS Deployment Target to 15.5, then run `pod install`.
 
+The plugin depends on `MediaPipeTasksVision` (CocoaPods). Run `pod install --repo-update` after upgrading.
+
 > Without `NSCameraUsageDescription`, iOS kills the app the moment the camera starts. `checkSupport()` detects a missing entry and blocks the feature instead.
 
 ### 4. If you use spoken prompts on Android 11+
@@ -218,6 +220,7 @@ Add retries (for example 3 attempts on network errors and 5xx) inside your uploa
 | `cameraAccessBlocked`         | user-fixable / blocking                    | iOS: denied (fixable) or restricted by device policy (blocking)                                                                            |
 | `noCamera`                    | blocking                                   | No usable camera                                                                                                                           |
 | `mlKitUnavailable`            | blocking                                   | Google ML Kit failed to load (for example Apple Silicon simulators)                                                                        |
+| `handTrackingUnavailable`     | warning                                    | The MediaPipe hand model could not load; the hands step checks lighting only                                                               |
 | `lowStorage`                  | user-fixable                               | Less than 200 MB free                                                                                                                      |
 | `checkFailed`                 | blocking                                   | Part of the check failed. On iOS this includes native info being unavailable, because the camera permission entry can't then be confirmed. |
 | `noUsbCamera`                 | warning (blocking with `requireUsbCamera`) | No USB webcam connected                                                                                                                    |
@@ -244,7 +247,7 @@ A session records the steps in `config.steps` (default: full body, face, hands, 
 |------------|---------------------------------------------------------|--------------------------------------------------------------------------------------|
 | `fullBody` | 11 key body points inside the box; one person; lighting | 33 body points per sample, grouped into face, body, left/right hand, left/right foot |
 | `face`     | One face, inside the box, close enough; lighting        | Face box, 10 landmarks, 15 contours, head angles                                     |
-| `hands`    | Lighting only                                           | None                                                                                 |
+| `hands`    | Both hands visible (MediaPipe, 21 points per hand), inside the box; lighting | 21 points per hand: `handedness`, `side`, `score`                       |
 | `feet`     | Lighting only                                           | None                                                                                 |
 
 Face, hands and feet are skippable by default. The skeleton overlay draws face, hands, feet and body in different colours. Its visibility is independent of the debug overlay.
@@ -350,6 +353,8 @@ All fields of `MovementCaptureConfig` (all optional):
 | `safeZoneInset`                                                      | 0.075                           | Box margin at each edge (wide-angle lens distortion)                                                             |
 | `minLandmarkLikelihood`                                              | 0.5                             | Confidence needed for the 11 key body points                                                                     |
 | `faceMinWidthFraction`                                               | 0.28                            | Face step: minimum face width as a share of the frame                                                            |
+| `handTracking`                                                       | `true`                          | Hands step: track hands with MediaPipe (21 points per hand). Off = lighting checks only                          |
+| `requireBothHands`                                                   | `true`                          | Hands step: both hands must be visible                                                                           |
 | `minMeanLuma` / `maxMeanLuma`                                        | 60 / 200                        | Too dark / too bright (0–255)                                                                                    |
 | `maxClippedFraction`                                                 | 0.25                            | Share of nearly black/white pixels allowed                                                                       |
 | `minCenterToBorderLuma`                                              | 0.6                             | Below this, "backlit"                                                                                            |
@@ -389,7 +394,7 @@ Touch targets are at least 56 dp and texts are large by design (elderly users).
 
 ## Limitations
 
-- **Hands and feet close-ups are not position-checked**, because ML Kit has no hand or foot detector. Your server must judge their usability.
+- **Feet close-ups are not position-checked** (no model tracks feet without the upper body); use the full-body data for feet. Hands close-ups are tracked with MediaPipe; if it can't load, the step checks lighting only.
 - Full-body tracking has only 3–4 points per hand and foot.
 - Tracking data is sampled at the analysis rate (about 6–7 per second), with timestamps.
 - 2D camera only: depth (walking towards the camera) is not measured.

@@ -4,6 +4,17 @@ All notable changes to `movement_capture`. The format follows [Keep a Changelog]
 
 ## [Unreleased]
 
+## [0.8.0] · 2026-10-26
+### Added
+- Hands step: MediaPipe Hand Landmarker (21 points per hand, up to 2 hands) on Android and iOS, with the hand skeleton on screen.
+- Hands step checks: `noHands`, `oneHand` (when `requireBothHands`), and hands out of the box.
+- `landmarks.json` for the hands step (`hands[]` with `handedness`, `side`, `score`, 21 points as `[x, y, z]`).
+- Config `handTracking`, `requireBothHands`; support warning `handTrackingUnavailable`.
+- `MODELS.md` listing bundled models.
+### Changed
+- iOS plugin now depends on `MediaPipeTasksVision` (static framework); the Swift Package Manager manifest was removed (the app builds with CocoaPods).
+- Android plugin depends on `com.google.mediapipe:tasks-vision:0.10.26`.
+
 ## [0.7.1] · 2026-10-26
 ### Fixed
 - Skeleton not aligned with the person: analysed frames are now rotated exactly as the preview is (iOS: frames are already upright; Android USB cameras: sensor/screen rule instead of a fixed 0°).

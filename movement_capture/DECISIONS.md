@@ -100,7 +100,7 @@ All thresholds are in config.
 
 ### D-020 · Multi-step session: full body, face, hands, feet
 **Decision:** Separate clips per step. Hands and feet are lighting-checked only. Uploads run in the background, one per step, with a shared `sessionId`.
-**Why:** Face and hand detail is too small in a full-body shot. ML Kit has no hand or foot detector on both platforms.
+**Why:** Face and hand detail is too small in a full-body shot. ML Kit has no hand or foot detector on both platforms. (Hands: updated by D-029.)
 **Consequences:** The server must judge hands and feet clips itself. A fixed kiosk webcam needs `stepCameras` or a manual switch for the feet step.
 
 ### D-021 · Tracking data as `landmarks.json` (format version 1)
@@ -134,3 +134,8 @@ All thresholds are in config.
 ### D-028 · Faster, smoother skeleton
 **Decision:** Analyse up to ~15 frames/s (150 ms on low-memory devices), run the full-body face count every 3rd analysis, glide 50 ms, and draw uncertain points faded down to likelihood 0.2 (the checks still need 0.5).
 **Why:** At 6–7 analyses/s with a 150 ms glide the skeleton trailed movement, and hands and feet disappeared during motion.
+
+### D-029 · MediaPipe hand tracking for the hands step
+**Decision:** Run MediaPipe Hand Landmarker natively in the plugin for the hands step only. Dart sends a small upright RGBA image (≤ 256 px); native wraps it and returns 21 points per hand. After 3 failures in a row, fall back to lighting-only for that step.
+**Why:** ML Kit has no hand model; the hands close-up showed no pointers and had no position check. One Dart conversion path keeps both platforms identical and testable.
+**Consequences:** ~8 MB model plus MediaPipe's native libraries in the app. Handedness is corrected for mirroring into `side`. Feet still have no close-up model (D-020 stands for feet).

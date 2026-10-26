@@ -72,6 +72,7 @@ kotlin {
 }
 
 dependencies {
+    implementation("com.google.mediapipe:tasks-vision:0.10.26")
     testImplementation("org.jetbrains.kotlin:kotlin-test")
     testImplementation("org.mockito:mockito-core:5.0.0")
 }

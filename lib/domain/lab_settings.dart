@@ -37,6 +37,8 @@ class LabSettings {
     CaptureStep.feet,
   };
   double closeUpDurationS = 10;
+  bool handTracking = true;
+  bool requireBothHands = true;
   bool feetUseBackCamera = false;
   CaptureMode mode = CaptureMode.assisted;
   bool voiceEnabled = true;
@@ -62,6 +64,8 @@ class LabSettings {
             : const {},
         countdown:
             countdownS < 1 ? null : Duration(seconds: countdownS.round()),
+        handTracking: handTracking,
+        requireBothHands: requireBothHands,
         mode: mode,
         voiceInAssisted: voiceInAssisted,
         stableBeforeStart: Duration(milliseconds: stableMs.round()),
@@ -102,5 +106,6 @@ class LabSettings {
       'orientation=${orientation.name} noLiveChecks=$allowNoLiveChecks skeleton=$showSkeleton '
       'steps=${steps.map((s) => s.name).join('+')} '
       'closeUp=${closeUpDurationS.round()}s feetBack=$feetUseBackCamera '
+      'hands=$handTracking/${requireBothHands ? 'both' : 'one'} '
       'mode=${mode.name} voice=$voiceEnabled/$voiceLanguage';
 }

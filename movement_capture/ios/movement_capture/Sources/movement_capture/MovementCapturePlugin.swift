@@ -6,6 +6,7 @@ import UIKit
 public class MovementCapturePlugin: NSObject, FlutterPlugin {
   /// isIdleTimerDisabled before we changed it (nil = we haven't changed it).
   private var previousIdleTimerDisabled: Bool?
+  private let hands = HandTracker()
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(
@@ -29,6 +30,22 @@ public class MovementCapturePlugin: NSObject, FlutterPlugin {
     case "setKeepScreenOn":
       let on = ((call.arguments as? [String: Any])?["on"] as? Bool) ?? false
       setKeepScreenOn(on)
+      result(nil)
+    case "handTrackingAvailable":
+      hands.available(result: result)
+    case "detectHands":
+      guard let args = call.arguments as? [String: Any],
+        let rgba = args["rgba"] as? FlutterStandardTypedData,
+        let width = args["width"] as? Int,
+        let height = args["height"] as? Int,
+        width > 0, height > 0
+      else {
+        result(FlutterError(code: "BAD_ARGS", message: "rgba/width/height invalid", details: nil))
+        return
+      }
+      hands.detect(rgba: rgba.data, width: width, height: height, result: result)
+    case "closeHands":
+      hands.close()
       result(nil)
     default:
       result(FlutterMethodNotImplemented)

@@ -4,6 +4,8 @@ enum CaptureIssue {
   multiplePeople,
   noPerson,
   noFace,
+  noHands,
+  oneHand,
   outOfFrame,
   faceTooFar,
   tooDark,

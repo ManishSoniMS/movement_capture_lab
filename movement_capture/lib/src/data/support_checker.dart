@@ -64,11 +64,20 @@ abstract final class SupportChecker {
       }
     }
 
+    var hands = false;
+    try {
+      hands = await NativeBridge.handTrackingAvailable()
+          .timeout(const Duration(seconds: 8));
+    } catch (_) {
+      hands = false;
+    }
+
     return evaluateSupport(
       platform: platform,
       native: native,
       cameras: cameras,
       mlKitAvailable: mlKit,
+      handTrackingAvailable: hands,
       requirements: requirements,
       nativeError: nativeError,
       cameraError: cameraError,

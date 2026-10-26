@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' show Offset, Rect, Size;
 
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
@@ -10,14 +12,18 @@ import '../domain/capture_step.dart';
 import '../domain/config.dart';
 import '../domain/face_snapshot.dart';
 import '../domain/frame_analyzer.dart';
+import '../domain/frame_downscaler.dart';
+import '../domain/hand_topology.dart';
 import '../domain/frame_metrics.dart';
 import '../domain/luma_stats.dart';
 import '../domain/pose_topology.dart';
+import 'native_bridge.dart';
 
 /// ML Kit detection plus luma stats, with the detectors chosen per step:
 /// full body = pose + fast face count; face = face with landmarks and
-/// contours; hands and feet = lighting only (ML Kit has no hand or foot
-/// detector, so those steps cannot be position-checked).
+/// contours; hands = MediaPipe Hand Landmarker through the plugin (lighting
+/// only when it is off or has failed); feet = lighting only (no model tracks
+/// feet without the upper body).
 class MlKitFrameAnalyzer implements FrameAnalyzer {
   MlKitFrameAnalyzer(
     this._config, {
@@ -26,6 +32,7 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
     required Duration interval,
   })  : _rotationDegrees = rotationDegrees,
         _interval = interval,
+        _handsActive = step.usesHands && _config.handTracking,
         _pose = step.usesPose
             ? PoseDetector(
                 options: PoseDetectorOptions(
@@ -57,6 +64,10 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
   final MovementCaptureConfig _config;
   final int Function() _rotationDegrees;
   final Duration _interval;
+
+  /// Hands step: false once MediaPipe failed 3 times in a row.
+  bool _handsActive;
+  int _handFailures = 0;
 
   /// Full-body step: the face detector runs on every 3rd analysis; the last
   /// result is reused in between.
@@ -104,6 +115,9 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
       final input = _toInputImage(image, rotation);
       final luma = _luma(image);
       final upright = _uprightSize(image, rotation);
+      // Like the ML Kit copy above, the hand image must be made before the
+      // first await: the camera reuses the buffer after the callback returns.
+      final handFrame = _handsActive ? _handImage(image, rotation) : null;
 
       final poseFuture =
           _pose?.processImage(input) ?? Future.value(const <Pose>[]);
@@ -113,7 +127,11 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
           ? _faces.processImage(input)
           : Future.value(
               step == CaptureStep.fullBody ? _lastFaces : const <Face>[]);
-      final (poses, faces) = await (poseFuture, faceFuture).wait;
+      final handsFuture = handFrame == null
+          ? Future.value(const <HandSnapshot>[])
+          : _detectHands(handFrame);
+      final (poses, faces, hands) =
+          await (poseFuture, faceFuture, handsFuture).wait;
       if (runFace && step == CaptureStep.fullBody) _lastFaces = faces;
 
       final issues = <CaptureIssue>{};
@@ -154,8 +172,18 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
             contours = face.contours.values.toList();
           }
         case CaptureStep.hands:
+          if (_handsActive) {
+            if (hands.isEmpty) {
+              issues.add(CaptureIssue.noHands);
+            } else if (hands.length < 2 && _config.requireBothHands) {
+              issues.add(CaptureIssue.oneHand);
+            }
+            if (hands.any((h) => h.points.any((p) => !_insidePoint(p)))) {
+              issues.add(CaptureIssue.outOfFrame);
+            }
+          }
         case CaptureStep.feet:
-          break; // lighting only: no hand/foot detector exists in ML Kit
+          break; // lighting only: no model tracks feet without the upper body
       }
 
       return FrameCheck(
@@ -166,10 +194,12 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
         pose: allPose,
         faceCount: faces.length,
         face: face,
+        hands: hands,
         overlay: OverlayFrame(
           pose: allPose,
           faces: boxes,
           faceContours: contours,
+          hands: hands,
         ),
         metrics: FrameMetrics(
           step: step,
@@ -181,10 +211,45 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
           analysesPerSecond: _runTimes.length,
           rotationDegrees: rotation,
           faceWidthFraction: faceWidth,
+          hands: hands.length,
+          handTracking: _handsActive,
         ),
       );
     } finally {
       _busy = false;
+    }
+  }
+
+  RgbaFrame _handImage(CameraImage image, int rotation) {
+    final plane = image.planes.first;
+    final nv21 = InputImageFormatValue.fromRawValue(image.format.raw) ==
+        InputImageFormat.nv21;
+    return downscaleToRgba(
+      plane.bytes,
+      nv21: nv21,
+      width: image.width,
+      height: image.height,
+      bytesPerRow: plane.bytesPerRow,
+      rotationDegrees: rotation,
+    );
+  }
+
+  /// Never throws: three failures in a row switch hand tracking off for the
+  /// rest of the step, and the step checks lighting only.
+  Future<List<HandSnapshot>> _detectHands(RgbaFrame frame) async {
+    try {
+      final hands = await NativeBridge.detectHands(frame)
+          .timeout(const Duration(seconds: 1));
+      _handFailures = 0;
+      return hands;
+    } catch (e) {
+      _handFailures++;
+      debugPrint('movement_capture: hand tracking failed ($_handFailures): $e');
+      if (_handFailures >= 3) {
+        _handsActive = false;
+        debugPrint('movement_capture: hand tracking switched off for this step');
+      }
+      return const [];
     }
   }
 
@@ -196,6 +261,7 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
     try {
       await _faces?.close();
     } catch (_) {}
+    if (step.usesHands) await NativeBridge.closeHands();
   }
 
   static int _normalise(int degrees) {
@@ -250,6 +316,14 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
     return swap
         ? Size(image.height.toDouble(), image.width.toDouble())
         : Size(image.width.toDouble(), image.height.toDouble());
+  }
+
+  bool _insidePoint(Offset p) {
+    final inset = _config.safeZoneInset;
+    return p.dx >= inset &&
+        p.dx <= 1 - inset &&
+        p.dy >= inset &&
+        p.dy <= 1 - inset;
   }
 
   bool _insideSafeZone(Rect r) {

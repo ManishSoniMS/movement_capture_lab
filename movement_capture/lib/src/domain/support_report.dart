@@ -20,6 +20,7 @@ enum SupportIssueCode {
   cameraAccessBlocked,
   noCamera,
   mlKitUnavailable,
+  handTrackingUnavailable,
   lowStorage,
   checkFailed,
   noUsbCamera,
@@ -76,6 +77,7 @@ class SupportReport {
     this.freeBytes,
     this.totalMemoryBytes,
     this.mlKitAvailable = false,
+    this.handTrackingAvailable = true,
   });
 
   /// "android", "ios", "web", or another platform name.
@@ -87,6 +89,10 @@ class SupportReport {
   final int? freeBytes;
   final int? totalMemoryBytes;
   final bool mlKitAvailable;
+
+  /// False when the MediaPipe hand model could not load (hands step falls
+  /// back to lighting checks).
+  final bool handTrackingAvailable;
   final List<SupportIssue> issues;
   final DateTime checkedAt;
 
@@ -116,6 +122,7 @@ class SupportReport {
         'freeBytes': freeBytes,
         'totalMemoryBytes': totalMemoryBytes,
         'mlKitAvailable': mlKitAvailable,
+        'handTrackingAvailable': handTrackingAvailable,
         'issues': [for (final i in issues) i.toJson()],
         'checkedAt': checkedAt.toUtc().toIso8601String(),
       };
@@ -142,6 +149,7 @@ SupportReport evaluateSupport({
   required NativeSupportInfo? native,
   required List<CameraDescription>? cameras,
   required bool mlKitAvailable,
+  bool handTrackingAvailable = true,
   SupportRequirements requirements = const SupportRequirements(),
   String? nativeError,
   String? cameraError,
@@ -161,6 +169,7 @@ SupportReport evaluateSupport({
         freeBytes: native?.freeBytes,
         totalMemoryBytes: native?.totalMemoryBytes,
         mlKitAvailable: mlKitAvailable,
+        handTrackingAvailable: handTrackingAvailable,
         issues: List.unmodifiable(issues),
         checkedAt: now ?? DateTime.now(),
       );
@@ -274,6 +283,13 @@ SupportReport evaluateSupport({
   if (!mlKitAvailable) {
     add(SupportIssueCode.mlKitUnavailable, SupportSeverity.blocking,
         'ML Kit pose/face detection failed on this device ($mlKitError).');
+  }
+
+  // 9b. Hand tracking (hands step only; not blocking).
+  if (!handTrackingAvailable) {
+    add(SupportIssueCode.handTrackingUnavailable, SupportSeverity.warning,
+        'MediaPipe hand tracking could not load; the hands step will check '
+        'lighting only.');
   }
 
   return build();
