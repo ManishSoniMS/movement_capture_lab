@@ -6,7 +6,7 @@ enum UploaderMode { mock, mockFail, inspection, http }
 /// on-site tuning; they become the kiosk app's defaults.
 class LabSettings {
   double maxDurationS = 30;
-  double countdownS = 3;
+  double countdownS = 0; // 0 = mode default
   double stableMs = 1500;
   double graceMs = 400;
   double maxRestarts = 3;
@@ -38,6 +38,10 @@ class LabSettings {
   };
   double closeUpDurationS = 10;
   bool feetUseBackCamera = false;
+  CaptureMode mode = CaptureMode.assisted;
+  bool voiceEnabled = true;
+  bool voiceInAssisted = false;
+  String voiceLanguage = 'en-IN';
 
   MovementCaptureConfig toConfig() => MovementCaptureConfig(
         maxDuration: Duration(seconds: maxDurationS.round()),
@@ -56,7 +60,10 @@ class LabSettings {
         stepCameras: feetUseBackCamera
             ? const {CaptureStep.feet: CameraKind.back}
             : const {},
-        countdown: Duration(seconds: countdownS.round()),
+        countdown:
+            countdownS < 1 ? null : Duration(seconds: countdownS.round()),
+        mode: mode,
+        voiceInAssisted: voiceInAssisted,
         stableBeforeStart: Duration(milliseconds: stableMs.round()),
         violationGrace: Duration(milliseconds: graceMs.round()),
         maxRestarts: maxRestarts.round(),
@@ -83,7 +90,7 @@ class LabSettings {
 
   /// One line to paste into the PR / tuning notes.
   String summary() =>
-      'duration=${maxDurationS.round()}s countdown=${countdownS.round()}s '
+      'duration=${maxDurationS.round()}s countdown=${countdownS < 1 ? 'auto' : '${countdownS.round()}s'} '
       'stable=${stableMs.round()}ms grace=${graceMs.round()}ms restarts=${maxRestarts.round()} '
       'rotation=$rotation res=${resolution.name} inset=${safeZoneInset.toStringAsFixed(3)} '
       'likelihood=${minLikelihood.toStringAsFixed(2)} luma=${minLuma.round()}–${maxLuma.round()} '
@@ -92,5 +99,6 @@ class LabSettings {
       'mirror(usb/front/back)=${mirrorExternal ?? 'auto'}/${mirrorFront ?? 'auto'}/${mirrorBack ?? 'auto'} '
       'orientation=${orientation.name} noLiveChecks=$allowNoLiveChecks skeleton=$showSkeleton '
       'steps=${steps.map((s) => s.name).join('+')} '
-      'closeUp=${closeUpDurationS.round()}s feetBack=$feetUseBackCamera';
+      'closeUp=${closeUpDurationS.round()}s feetBack=$feetUseBackCamera '
+      'mode=${mode.name} voice=$voiceEnabled/$voiceLanguage';
 }

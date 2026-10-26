@@ -12,10 +12,13 @@ import '../domain/config.dart';
 import '../domain/result.dart';
 import '../domain/support_report.dart';
 import '../domain/uploader.dart';
+import '../domain/voice.dart';
 import 'controller.dart';
 import 'customization.dart';
 import 'debug_overlay.dart';
 import 'skeleton_layer.dart';
+import 'speech_planner.dart';
+import 'voice_guide.dart';
 
 /// Pops with a [MovementCaptureResult]: completed when every recorded step was
 /// uploaded, cancelled otherwise. Steps already uploaded keep their IDs.
@@ -30,6 +33,7 @@ class MovementCaptureScreen extends StatefulWidget {
     this.style = const MovementCaptureStyle(),
     this.showDebugOverlay = false,
     this.onCameraChanged,
+    this.voice,
   });
 
   final MovementCaptureConfig config;
@@ -41,6 +45,9 @@ class MovementCaptureScreen extends StatefulWidget {
   final bool showDebugOverlay;
   final void Function(CameraDescription camera)? onCameraChanged;
 
+  /// Speaks prompts when [MovementCaptureConfig.speaks]. Null = silent.
+  final MovementCaptureVoice? voice;
+
   @override
   State<MovementCaptureScreen> createState() => _MovementCaptureScreenState();
 }
@@ -48,6 +55,7 @@ class MovementCaptureScreen extends StatefulWidget {
 class _MovementCaptureScreenState extends State<MovementCaptureScreen>
     with WidgetsBindingObserver {
   late final MovementCaptureController _controller;
+  VoiceGuide? _voiceGuide;
   bool _closing = false;
 
   @override
@@ -65,6 +73,21 @@ class _MovementCaptureScreenState extends State<MovementCaptureScreen>
       uploader: widget.uploader,
       onCameraChanged: widget.onCameraChanged,
     );
+    final voice = widget.voice;
+    if (voice != null && widget.config.speaks) {
+      _voiceGuide = VoiceGuide(
+        controller: _controller,
+        voice: voice,
+        planner: SpeechPlanner(
+          strings: widget.strings,
+          mode: widget.config.mode,
+          issueRepeat: widget.config.voiceIssueRepeat,
+        ),
+      );
+    } else if (widget.config.mode == CaptureMode.selfGuided) {
+      debugPrint('movement_capture: self-guided mode without a voice. '
+          'Users who stepped back cannot read the screen; pass `voice`.');
+    }
     unawaited(_controller.start());
   }
 
@@ -90,6 +113,7 @@ class _MovementCaptureScreenState extends State<MovementCaptureScreen>
     WidgetsBinding.instance.removeObserver(this);
     SystemChrome.setPreferredOrientations(widget.config.restoreOrientations);
     unawaited(NativeBridge.setKeepScreenOn(false));
+    _voiceGuide?.dispose();
     _controller.dispose(); // stops recording, cancels uploads, deletes files
     super.dispose();
   }
@@ -142,6 +166,11 @@ class _MovementCaptureScreenState extends State<MovementCaptureScreen>
                 ui: ui,
                 showDebug: widget.showDebugOverlay,
                 onClose: _close,
+                voiceGuide: _voiceGuide,
+                onToggleMute: () => setState(() {
+                  final g = _voiceGuide;
+                  if (g != null) g.muted = !g.muted;
+                }),
               ),
             ),
           ),
@@ -263,6 +292,8 @@ class _CaptureBody extends StatelessWidget {
     required this.ui,
     required this.showDebug,
     required this.onClose,
+    required this.voiceGuide,
+    required this.onToggleMute,
   });
 
   final MovementCaptureController controller;
@@ -270,6 +301,8 @@ class _CaptureBody extends StatelessWidget {
   final _Ui ui;
   final bool showDebug;
   final VoidCallback onClose;
+  final VoiceGuide? voiceGuide;
+  final VoidCallback onToggleMute;
 
   bool _mirror(CameraChoice? c) => c == null
       ? false
@@ -328,7 +361,7 @@ class _CaptureBody extends StatelessWidget {
         Positioned(
           top: 16,
           left: 16,
-          right: 16,
+          right: voiceGuide != null ? 88 : 16,
           child: LayoutBuilder(
             builder: (context, constraints) {
               final banner =
@@ -355,7 +388,13 @@ class _CaptureBody extends StatelessWidget {
           ),
         ),
         if (state case CountingDown(:final secondsLeft))
-          Center(child: _CountdownNumber(seconds: secondsLeft)),
+          Center(
+            child: _CountdownNumber(
+              seconds: secondsLeft,
+              size:
+                  controller.config.mode == CaptureMode.selfGuided ? 220 : 180,
+            ),
+          ),
         Positioned(
           left: 16,
           right: 16,
@@ -368,6 +407,18 @@ class _CaptureBody extends StatelessWidget {
             onChooseCamera: () => _showCameraSheet(context, controller, ui),
           ),
         ),
+        if (voiceGuide case final guide?)
+          Positioned(
+            top: 16,
+            right: 16,
+            child: IconButton.filledTonal(
+              iconSize: 32,
+              constraints: const BoxConstraints(minWidth: 56, minHeight: 56),
+              tooltip: guide.muted ? ui.strings.unmute : ui.strings.mute,
+              onPressed: onToggleMute,
+              icon: Icon(guide.muted ? ui.icons.voiceOff : ui.icons.voiceOn),
+            ),
+          ),
         if (_panel(context) case final Widget panel) panel,
       ],
     );
@@ -402,7 +453,8 @@ class _CaptureBody extends StatelessWidget {
           ui: ui,
           icon: ui.icons.issue(lastIssue),
           isError: true,
-          message: '${s.needsOperator}\n\n${s.issue(lastIssue)}',
+          message: '${s.needsOperatorFor(controller.config.mode)}\n\n'
+              '${s.issueFor(lastIssue, controller.config.mode)}',
           actions: [
             _PanelAction(s.cancel, onClose),
             if (controller.cameras.length > 1)
@@ -454,7 +506,10 @@ class _TopBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final textStyle = theme.textTheme.headlineSmall;
+    final mode = controller.config.mode;
+    final textStyle = mode == CaptureMode.selfGuided
+        ? theme.textTheme.headlineMedium
+        : theme.textTheme.headlineSmall;
     final s = ui.strings;
     final step = controller.currentStep;
     final progress = Text(
@@ -485,8 +540,8 @@ class _TopBanner extends StatelessWidget {
               Expanded(
                 child: Text(
                   interrupted
-                      ? '${s.interrupted}\n${s.issue(issue)}'
-                      : s.issue(issue),
+                      ? '${s.interrupted}\n${s.issueFor(issue, mode)}'
+                      : s.issueFor(issue, mode),
                   style: textStyle?.copyWith(color: scheme.onErrorContainer),
                 ),
               ),
@@ -509,7 +564,10 @@ class _TopBanner extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
-              Text(armed ? s.hintArmed : s.stepInstruction(step),
+              Text(
+                  armed
+                      ? s.hintArmedFor(mode)
+                      : s.stepInstructionFor(step, mode),
                   style: textStyle),
               if (saved != null && !armed)
                 infoRow(ui.icons.saved, s.stepSaved(saved)),
@@ -582,15 +640,16 @@ class _BannerCard extends StatelessWidget {
 }
 
 class _CountdownNumber extends StatelessWidget {
-  const _CountdownNumber({required this.seconds});
+  const _CountdownNumber({required this.seconds, required this.size});
   final int seconds;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
-      width: 180,
-      height: 180,
+      width: size,
+      height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: scheme.surfaceContainerHigh.withValues(alpha: 0.9),

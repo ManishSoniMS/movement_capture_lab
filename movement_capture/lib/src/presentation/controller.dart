@@ -464,7 +464,7 @@ class MovementCaptureController extends ChangeNotifier {
   }
 
   void _beginCountdown() {
-    var left = config.countdown.inSeconds;
+    var left = config.effectiveCountdown.inSeconds;
     if (left < 1) left = 1;
     if (left > 10) left = 10;
     final id = ++_countdownId;

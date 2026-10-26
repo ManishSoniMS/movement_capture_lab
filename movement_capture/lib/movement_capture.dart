@@ -18,5 +18,6 @@ export 'src/domain/support_report.dart'
 export 'src/domain/capture_issue.dart';
 export 'src/domain/config.dart';
 export 'src/domain/uploader.dart';
+export 'src/domain/voice.dart';
 export 'src/presentation/customization.dart';
 export 'src/presentation/screen.dart' show MovementCaptureScreen;

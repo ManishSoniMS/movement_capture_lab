@@ -89,6 +89,25 @@ restores the previous setting on close.
 Call `MovementCapture.purgeAll()` on logout and before login (never while a
 capture screen is open).
 
+## Modes and spoken prompts
+
+`config.mode` serves two business models from one code base.
+
+|                  | `assisted` (B2B, default)                | `selfGuided` (B2C)                     |
+|------------------|------------------------------------------|----------------------------------------|
+| Wording          | Addresses the helper ("Ask the patient…") | Addresses the user ("Step back until…") |
+| Spoken prompts   | Off unless `voiceInAssisted: true`       | On when a voice is supplied            |
+| Countdown        | 3 s                                      | 5 s                                    |
+| Banner / countdown size | standard                          | larger                                 |
+
+Pass a `MovementCaptureVoice` to `open(voice:)`. The package has no
+text-to-speech dependency: the host speaks the already-translated strings in
+the user's language (a Hindi user needs Hindi strings and a Hindi voice).
+`speak` must interrupt anything still playing and neither method may throw.
+Each event is spoken once; an unresolved problem repeats every
+`voiceIssueRepeat`. A speaker button mutes and unmutes for the session.
+Self-guided mode without a voice logs one warning and stays silent.
+
 ## Camera choice
 
 First USB camera if connected; otherwise the tablet front camera (with a
@@ -128,7 +147,10 @@ strings (metadata first; package fields win a name clash).
 | skippableSteps                                                 | {face, hands, feet}                                                          |
 | stepCameras                                                    | {}                                                                           |
 | faceMinWidthFraction                                           | 0.28                                                                         |
-| countdown                                                      | 3 s                                                                          |
+| countdown                                                      | null = 3 s (assisted) / 5 s (selfGuided)                                     |
+| mode                                                           | CaptureMode.assisted                                                         |
+| voiceInAssisted                                                | false                                                                        |
+| voiceIssueRepeat                                               | 6 s                                                                          |
 | stableBeforeStart                                              | 1500 ms                                                                      |
 | violationGrace                                                 | 400 ms                                                                       |
 | maxRestarts                                                    | 3                                                                            |

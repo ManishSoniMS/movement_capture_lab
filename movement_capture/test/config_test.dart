@@ -97,4 +97,24 @@ void main() {
     expect(c.stepCameras, isEmpty);
     expect(c.faceMinWidthFraction, 0.28);
   });
+
+  test('countdown default depends on mode', () {
+    expect(
+        MovementCaptureConfig().effectiveCountdown, const Duration(seconds: 3));
+    expect(
+        MovementCaptureConfig(mode: CaptureMode.selfGuided).effectiveCountdown,
+        const Duration(seconds: 5));
+    expect(
+        MovementCaptureConfig(
+                mode: CaptureMode.selfGuided,
+                countdown: const Duration(seconds: 2))
+            .effectiveCountdown,
+        const Duration(seconds: 2));
+  });
+
+  test('voice speaks in self-guided mode, in assisted only when asked', () {
+    expect(MovementCaptureConfig().speaks, isFalse);
+    expect(MovementCaptureConfig(voiceInAssisted: true).speaks, isTrue);
+    expect(MovementCaptureConfig(mode: CaptureMode.selfGuided).speaks, isTrue);
+  });
 }

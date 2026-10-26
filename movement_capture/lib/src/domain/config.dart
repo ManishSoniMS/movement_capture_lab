@@ -6,6 +6,9 @@ import 'capture_step.dart';
 
 enum CaptureOrientation { auto, landscape, portrait }
 
+/// B2B: a helper is present. B2C: the user is on their own.
+enum CaptureMode { assisted, selfGuided }
+
 class MovementCaptureConfig {
   MovementCaptureConfig({
     Duration maxDuration = const Duration(seconds: 30),
@@ -22,7 +25,7 @@ class MovementCaptureConfig {
       CaptureStep.feet,
     },
     this.stepCameras = const {},
-    this.countdown = const Duration(seconds: 3),
+    this.countdown,
     this.stableBeforeStart = const Duration(milliseconds: 1500),
     this.violationGrace = const Duration(milliseconds: 400),
     this.maxRestarts = 3,
@@ -33,6 +36,9 @@ class MovementCaptureConfig {
     this.mirrorFrontPreview,
     this.mirrorBackPreview,
     this.orientation = CaptureOrientation.auto,
+    this.mode = CaptureMode.assisted,
+    this.voiceInAssisted = false,
+    this.voiceIssueRepeat = const Duration(seconds: 6),
     this.allowRecordingWithoutLiveChecks = true,
     this.showSkeleton = true,
     this.skeletonMinLikelihood = 0.5,
@@ -75,7 +81,15 @@ class MovementCaptureConfig {
   /// current camera when none of that kind exists.
   final Map<CaptureStep, CameraKind> stepCameras;
 
-  final Duration countdown;
+  /// null = 3 s (assisted) or 5 s (self-guided: time to step back).
+  final Duration? countdown;
+
+  Duration get effectiveCountdown =>
+      countdown ??
+      (mode == CaptureMode.selfGuided
+          ? const Duration(seconds: 5)
+          : const Duration(seconds: 3));
+
   final Duration stableBeforeStart;
   final Duration violationGrace;
   final int maxRestarts;
@@ -97,6 +111,17 @@ class MovementCaptureConfig {
   final bool? mirrorBackPreview;
 
   final CaptureOrientation orientation;
+
+  final CaptureMode mode;
+
+  /// Speak prompts in assisted mode too (self-guided always speaks if a voice
+  /// is supplied).
+  final bool voiceInAssisted;
+
+  /// How often an unresolved problem is repeated aloud.
+  final Duration voiceIssueRepeat;
+
+  bool get speaks => mode == CaptureMode.selfGuided || voiceInAssisted;
 
   /// When a device cannot send frames during recording: true = record without
   /// checks and report liveChecks=false; false = show the error instead.

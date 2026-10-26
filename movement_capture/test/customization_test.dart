@@ -27,4 +27,19 @@ void main() {
   test('saved note names the finished step', () {
     expect(strings.stepSaved(CaptureStep.fullBody), 'Saved: Full body');
   });
+
+  test('self-guided wording differs from the helper wording for every step',
+      () {
+    for (final step in CaptureStep.values) {
+      expect(strings.stepInstructionFor(step, CaptureMode.assisted),
+          strings.stepInstruction(step));
+      expect(strings.stepInstructionFor(step, CaptureMode.selfGuided),
+          isNot(strings.stepInstruction(step)),
+          reason: '$step');
+    }
+  });
+
+  test('voice countdown fills the number', () {
+    expect(strings.voiceStartingIn(5), 'Starting in 5');
+  });
 }

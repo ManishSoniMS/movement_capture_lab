@@ -4,6 +4,7 @@ import 'package:movement_capture/movement_capture.dart';
 
 import 'camera_info_page.dart';
 import '../domain/lab_settings.dart';
+import '../data/tts_voice.dart';
 import '../data/uploaders.dart';
 
 class HomePage extends StatefulWidget {
@@ -68,6 +69,7 @@ class _HomePageState extends State<HomePage> {
       uploader: _uploader(),
       showDebugOverlay: _s.debugOverlay,
       onCameraChanged: (camera) => _s.lastCameraId = camera.name,
+      voice: _s.voiceEnabled ? TtsVoice(language: _s.voiceLanguage) : null,
     );
     if (!mounted) return;
     final ids = result.steps
@@ -181,8 +183,8 @@ class _HomePageState extends State<HomePage> {
           const _Section('Timing'),
           _slider('Full-body duration (s, values above 30 are clamped)',
               _s.maxDurationS, 5, 45, 40, _int, (v) => _s.maxDurationS = v),
-          _slider('Countdown (s)', _s.countdownS, 1, 5, 4, _int,
-              (v) => _s.countdownS = v),
+          _slider('Countdown (s, 0 = mode default)', _s.countdownS, 0, 10, 10,
+              _int, (v) => _s.countdownS = v),
           _slider('Stable before start (ms)', _s.stableMs, 500, 3000, 25, _int,
               (v) => _s.stableMs = v),
           _slider('Failure grace (ms)', _s.graceMs, 100, 1500, 28, _int,
@@ -210,6 +212,43 @@ class _HomePageState extends State<HomePage> {
             title: const Text('Switch to back camera for the feet step'),
             value: _s.feetUseBackCamera,
             onChanged: (v) => setState(() => _s.feetUseBackCamera = v),
+          ),
+          const _Section('Mode and voice'),
+          ListTile(
+            title: const Text('Mode'),
+            subtitle:
+                const Text('assisted = B2B helper · selfGuided = B2C alone'),
+            trailing: DropdownButton<CaptureMode>(
+              value: _s.mode,
+              items: CaptureMode.values
+                  .map((m) => DropdownMenuItem(value: m, child: Text(m.name)))
+                  .toList(),
+              onChanged: (v) =>
+                  setState(() => _s.mode = v ?? CaptureMode.assisted),
+            ),
+          ),
+          SwitchListTile(
+            title: const Text('Voice (text-to-speech)'),
+            value: _s.voiceEnabled,
+            onChanged: (v) => setState(() => _s.voiceEnabled = v),
+          ),
+          SwitchListTile(
+            title: const Text('Also speak in assisted mode'),
+            value: _s.voiceInAssisted,
+            onChanged: (v) => setState(() => _s.voiceInAssisted = v),
+          ),
+          ListTile(
+            title: const Text('Voice language'),
+            subtitle: const Text(
+                'The lab strings are English; real apps pass translated strings'),
+            trailing: DropdownButton<String>(
+              value: _s.voiceLanguage,
+              items: const ['en-IN', 'hi-IN', 'bn-IN', 'kn-IN']
+                  .map((l) => DropdownMenuItem(value: l, child: Text(l)))
+                  .toList(),
+              onChanged: (v) =>
+                  setState(() => _s.voiceLanguage = v ?? 'en-IN'),
+            ),
           ),
           const _Section('Camera'),
           ListTile(

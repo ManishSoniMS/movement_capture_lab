@@ -15,6 +15,7 @@ dependencies:
   camera_platform_interface: ^2.10.0 # to show which implementation is active
   dio: ^5.11.1
   path_provider: ^2.1.6
+  flutter_tts: ^4.2.5
 
 dev_dependencies:
   flutter_test:

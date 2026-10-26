@@ -8,6 +8,7 @@ import 'domain/config.dart';
 import 'domain/result.dart';
 import 'domain/support_report.dart';
 import 'domain/uploader.dart';
+import 'domain/voice.dart';
 import 'presentation/customization.dart';
 import 'presentation/screen.dart';
 
@@ -26,6 +27,9 @@ abstract final class MovementCapture {
   /// [onCameraChanged] fires only when the operator picks a camera from the
   /// list (never on automatic fallback). Keep `camera.name` in memory and pass
   /// it back as `MovementCaptureConfig.preferredCameraId` next time.
+  ///
+  /// [voice] speaks prompts (required for a good self-guided experience; see
+  /// CaptureMode.selfGuided). The package never speaks without it.
   static Future<MovementCaptureResult> open(
     BuildContext context, {
     required MovementCaptureConfig config,
@@ -36,6 +40,7 @@ abstract final class MovementCapture {
     SupportRequirements requirements = const SupportRequirements(),
     bool showDebugOverlay = false,
     void Function(CameraDescription camera)? onCameraChanged,
+    MovementCaptureVoice? voice,
   }) async {
     final report = await checkSupport(requirements: requirements);
     if (!report.canRun) {
@@ -54,6 +59,7 @@ abstract final class MovementCapture {
           style: style,
           showDebugOverlay: showDebugOverlay,
           onCameraChanged: onCameraChanged,
+          voice: voice,
         ),
       ),
     );

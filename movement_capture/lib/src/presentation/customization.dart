@@ -4,6 +4,7 @@ import '../domain/camera_choice.dart';
 import '../domain/capture_issue.dart';
 import '../domain/capture_state.dart';
 import '../domain/capture_step.dart';
+import '../domain/config.dart';
 
 /// Every user-facing string. English defaults; the host passes translations.
 /// Templates use {elapsed}, {total}, {percent}, {n} and {step} placeholders.
@@ -74,6 +75,27 @@ class MovementCaptureStrings {
     this.stepProgressTemplate = 'Step {n} of {total} · {step}',
     this.stepSavedTemplate = 'Saved: {step}',
     this.skipStep = 'Skip this step',
+    this.selfStepInstructionFullBody =
+        'Stand the phone up so the screen faces you. Tap Start, then step back until your whole body is inside the box.',
+    this.selfStepInstructionFace =
+        'Hold the phone at arm\'s length and look straight at it. Tap Start.',
+    this.selfStepInstructionHands =
+        'Stand the phone up. Tap Start, then hold both hands in front of it, palms facing the screen and fingers spread.',
+    this.selfStepInstructionFeet =
+        'Lean the phone against something low, facing your feet. Tap Start, then place both feet inside the box.',
+    this.selfHintArmed =
+        'Get into position. Recording starts when you are inside the box.',
+    this.selfNeedsOperator =
+        'Recording keeps stopping. Check the light and your position, then tap Try again.',
+    this.selfIssueBacklit =
+        'Bright light is behind you. Please close the curtain or turn around.',
+    this.voiceStartingInTemplate = 'Starting in {n}',
+    this.voiceRecording = 'Recording. Please stay still.',
+    this.voiceGood = 'Good. Stay there.',
+    this.voiceStepDone = 'Done.',
+    this.voiceFinishing = 'Sending the videos. Please wait.',
+    this.mute = 'Mute voice',
+    this.unmute = 'Turn voice on',
   });
 
   final String issueMultiplePeople;
@@ -127,6 +149,20 @@ class MovementCaptureStrings {
   final String stepProgressTemplate;
   final String stepSavedTemplate;
   final String skipStep;
+  final String selfStepInstructionFullBody;
+  final String selfStepInstructionFace;
+  final String selfStepInstructionHands;
+  final String selfStepInstructionFeet;
+  final String selfHintArmed;
+  final String selfNeedsOperator;
+  final String selfIssueBacklit;
+  final String voiceStartingInTemplate;
+  final String voiceRecording;
+  final String voiceGood;
+  final String voiceStepDone;
+  final String voiceFinishing;
+  final String mute;
+  final String unmute;
 
   String issue(CaptureIssue i) => switch (i) {
         CaptureIssue.multiplePeople => issueMultiplePeople,
@@ -138,6 +174,30 @@ class MovementCaptureStrings {
         CaptureIssue.tooBright => issueTooBright,
         CaptureIssue.backlit => issueBacklit,
       };
+
+  String stepInstructionFor(CaptureStep s, CaptureMode mode) =>
+      mode == CaptureMode.assisted
+          ? stepInstruction(s)
+          : switch (s) {
+              CaptureStep.fullBody => selfStepInstructionFullBody,
+              CaptureStep.face => selfStepInstructionFace,
+              CaptureStep.hands => selfStepInstructionHands,
+              CaptureStep.feet => selfStepInstructionFeet,
+            };
+
+  String hintArmedFor(CaptureMode mode) =>
+      mode == CaptureMode.assisted ? hintArmed : selfHintArmed;
+
+  String needsOperatorFor(CaptureMode mode) =>
+      mode == CaptureMode.assisted ? needsOperator : selfNeedsOperator;
+
+  String issueFor(CaptureIssue i, CaptureMode mode) =>
+      mode == CaptureMode.selfGuided && i == CaptureIssue.backlit
+          ? selfIssueBacklit
+          : issue(i);
+
+  String voiceStartingIn(int n) =>
+      voiceStartingInTemplate.replaceAll('{n}', '$n');
 
   String cameraFailure(CameraFailure f) => switch (f) {
         CameraFailure.noCamera => cameraNone,
@@ -217,6 +277,8 @@ class MovementCaptureIcons {
     this.stepFeet = Icons.directions_walk,
     this.skipStep = Icons.skip_next,
     this.saved = Icons.check,
+    this.voiceOn = Icons.volume_up,
+    this.voiceOff = Icons.volume_off,
   });
 
   final IconData multiplePeople;
@@ -244,6 +306,8 @@ class MovementCaptureIcons {
   final IconData stepFeet;
   final IconData skipStep;
   final IconData saved;
+  final IconData voiceOn;
+  final IconData voiceOff;
 
   IconData issue(CaptureIssue i) => switch (i) {
         CaptureIssue.multiplePeople => multiplePeople,
