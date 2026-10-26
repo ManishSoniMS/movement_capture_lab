@@ -31,7 +31,7 @@ class MovementCaptureConfig {
     this.maxRestarts = 3,
     this.resolution = ResolutionPreset.high,
     this.preferredCameraId,
-    this.cameraRotationDegrees = 0,
+    this.cameraRotationDegrees,
     this.mirrorExternalPreview,
     this.mirrorFrontPreview,
     this.mirrorBackPreview,
@@ -41,7 +41,7 @@ class MovementCaptureConfig {
     this.voiceIssueRepeat = const Duration(seconds: 6),
     this.allowRecordingWithoutLiveChecks = true,
     this.showSkeleton = true,
-    this.skeletonMinLikelihood = 0.5,
+    this.skeletonMinLikelihood = 0.2,
     this.safeZoneInset = 0.075,
     this.minLandmarkLikelihood = 0.5,
     this.faceMinWidthFraction = 0.28,
@@ -49,12 +49,13 @@ class MovementCaptureConfig {
     this.maxMeanLuma = 200,
     this.maxClippedFraction = 0.25,
     this.minCenterToBorderLuma = 0.6,
-    this.analysisInterval = const Duration(milliseconds: 150),
+    this.analysisInterval,
     this.metadata = const {},
     this.restoreOrientations = const [],
   })  : assert(
-          const {0, 90, 180, 270}.contains(cameraRotationDegrees),
-          'cameraRotationDegrees must be 0, 90, 180 or 270',
+          cameraRotationDegrees == null ||
+              const {0, 90, 180, 270}.contains(cameraRotationDegrees),
+          'cameraRotationDegrees must be null, 0, 90, 180 or 270',
         ),
         maxDuration = _clampDuration(maxDuration);
 
@@ -99,10 +100,11 @@ class MovementCaptureConfig {
   /// still connected; otherwise the default rule applies.
   final String? preferredCameraId;
 
-  /// Rotation of the USB camera image relative to upright, for the quality
-  /// checks only. Fixed per installation: the webcam does not rotate with the
-  /// tablet. Built-in cameras ignore this.
-  final int cameraRotationDegrees;
+  /// Rotation applied to analysed frames so the skeleton lines up with the
+  /// preview. null = automatic (recommended): iOS 0; Android front
+  /// (sensor + screen); Android back/USB (sensor − screen). Set a value only
+  /// for an unusual USB camera that the automatic rule gets wrong.
+  final int? cameraRotationDegrees;
 
   /// Display-only preview mirroring per camera type. null = platform default
   /// (see [mirrorPreviewFor]). Recorded files are never changed.
@@ -131,7 +133,8 @@ class MovementCaptureConfig {
   /// overlay).
   final bool showSkeleton;
 
-  /// Points below this likelihood are not drawn.
+  /// Points below this likelihood are not drawn; up to 0.7 they are drawn
+  /// faded. The quality checks still use [minLandmarkLikelihood].
   final double skeletonMinLikelihood;
 
   /// Fraction of width/height kept clear at each edge (wide-lens distortion).
@@ -144,7 +147,16 @@ class MovementCaptureConfig {
   final int maxMeanLuma;
   final double maxClippedFraction;
   final double minCenterToBorderLuma;
-  final Duration analysisInterval;
+
+  /// Minimum time between analysed frames. null = 66 ms (~15/s), or 150 ms on
+  /// low-memory devices. Each analysis also waits for the previous one.
+  final Duration? analysisInterval;
+
+  Duration effectiveAnalysisInterval({required bool lowMemoryDevice}) =>
+      analysisInterval ??
+      (lowMemoryDevice
+          ? const Duration(milliseconds: 150)
+          : const Duration(milliseconds: 66));
 
   /// Passed through untouched to the uploader (e.g. chatSessionId).
   final Map<String, String> metadata;
@@ -152,8 +164,6 @@ class MovementCaptureConfig {
   /// Orientations to restore when the screen closes. Empty = system default.
   final List<DeviceOrientation> restoreOrientations;
 
-  /// iOS's camera plugin already mirrors the front camera (preview and file),
-  /// so mirroring it again would flip it back.
   /// [steps] without duplicates, never empty.
   List<CaptureStep> get effectiveSteps {
     final seen = <CaptureStep>{};
@@ -173,13 +183,21 @@ class MovementCaptureConfig {
     return _clampDuration(stepDurations[step] ?? step.defaultDuration);
   }
 
+  /// Extra, display-only mirroring of the preview (and the skeleton with it).
+  /// Front cameras are already mirrored by the system on both platforms, so
+  /// the default is off for them. USB cameras default to a mirror view.
   bool mirrorPreviewFor(CameraKind kind, TargetPlatform platform) =>
       switch (kind) {
         CameraKind.external => mirrorExternalPreview ?? true,
-        CameraKind.front =>
-          mirrorFrontPreview ?? (platform != TargetPlatform.iOS),
+        CameraKind.front => mirrorFrontPreview ?? false,
         CameraKind.back => mirrorBackPreview ?? false,
       };
+
+  /// Whether the skeleton must be flipped relative to the preview. On Android
+  /// the system mirrors the front-camera preview but not the analysed frames;
+  /// on iOS both are mirrored together.
+  bool overlayFlipFor(CameraKind kind, TargetPlatform platform) =>
+      platform == TargetPlatform.android && kind == CameraKind.front;
 
   List<DeviceOrientation> orientationsFor(double shortestSide) {
     const landscape = [

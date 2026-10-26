@@ -1,6 +1,6 @@
 name: movement_capture
 description: Operator-assisted full-body video capture with live quality checks for kiosk tablets.
-version: 0.7.0
+version: 0.7.1
 publish_to: none
 
 environment:

@@ -25,4 +25,5 @@ typedef FrameAnalyzerFactory = FrameAnalyzer Function(
   MovementCaptureConfig config, {
   required CaptureStep step,
   required int Function() rotationDegrees,
+  required Duration interval,
 });

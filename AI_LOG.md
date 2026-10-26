@@ -79,3 +79,15 @@
 **Checks:** V63 compared the README config table with `MovementCaptureConfig` (names and defaults match), the upload table with `MovementClip.formFields`, and the `landmarks.json` shape with `LandmarkTrack`. V64: the quick start, uploader and voice snippets compiled in a scratch file in the lab (one `use_build_context_synchronously` info from my wrapper, nothing else); the file was removed. V65: every relative link in the docs resolves; mermaid rendering on GitHub not checked.
 
 **Not done:** the `movement_capture-v0.7.0` tag. The prompt says to tag after the lab checks pass on a device, and none of V35-V62 has been run. The `landmarks.json` examples were not compared with a real inspection file (V55 needs a device).
+
+## 2026-10-26: Skeleton alignment and missing hand/leg points (PROMPT.md, Revision 10)
+
+**Files:** `movement_capture/lib/src/domain/config.dart`, `domain/camera_choice.dart`, `domain/frame_analyzer.dart`, `data/mlkit_frame_analyzer.dart`, `presentation/controller.dart`, `presentation/screen.dart`, `presentation/skeleton_layer.dart`; lab `lib/domain/lab_settings.dart`, `lib/presentation/home_page.dart`; tests `config_test.dart`, `camera_choice_test.dart`; docs `CHANGELOG.md`, `DECISIONS.md` (D-026 to D-028, D-011/D-012 marked superseded), package `README.md`, `ARCHITECTURE.md`, root `README.md`; `pubspec.yaml` 0.7.1.
+
+**Why this approach:** the prompt's paths and file names (`analysis/frame_quality_analyzer.dart`, `apps/lab/...`) don't exist here, so the same edits went into the real files: the rotation rule stays in the domain function `analysisRotationDegrees` (now: override, else iOS 0, else the sensor/screen rule for every camera kind), the analyzer is `MlKitFrameAnalyzer`, and the interval reaches it through the existing `FrameAnalyzerFactory` as a new `interval:` argument. The controller reads the orientation the way `CameraPreview` does (recording, then paused, locked, device). Everything else follows the prompt as written.
+
+**Pros/cons:** rotation matches the preview by construction, so no per-camera tuning. About 15 analyses/s costs more CPU; low-memory devices stay at 150 ms. `cameraRotationDegrees` and `analysisInterval` becoming nullable is a breaking change for hosts that read them (marked in the changelog).
+
+**Checks:** red phase was a compile failure (missing `overlayFlipFor`, `effectiveAnalysisInterval`, nullable override). Package tests, package analyze and root analyze (3 known infos) results are in the commit run below. `dart format` touched unrelated files; those hunks were reverted.
+
+**Not verified:** V66 to V71 need devices (alignment on each camera, left/right on front cameras, during recording, hand/leg visibility, analyses/s). Nothing here can run camera or ML Kit under `flutter test`. No Android or iOS build was run. The `movement_capture-v0.7.0` tag is still not created.

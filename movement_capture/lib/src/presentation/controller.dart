@@ -41,11 +41,14 @@ class MovementCaptureController extends ChangeNotifier {
     CaptureStorage storage = const FileCaptureStorage(),
     FrameAnalyzerFactory analyzerFactory = MlKitFrameAnalyzer.new,
     this.onCameraChanged,
+    bool lowMemoryDevice = false,
   })  : _storage = storage,
         _analyzerFactory = analyzerFactory,
         _quality = QualityTimer(grace: config.violationGrace),
         steps = List.unmodifiable(config.effectiveSteps),
-        sessionId = _newSessionId() {
+        sessionId = _newSessionId(),
+        analysisInterval =
+            config.effectiveAnalysisInterval(lowMemoryDevice: lowMemoryDevice) {
     _uploads = StepUploads(
       uploader: uploader,
       storage: storage,
@@ -71,6 +74,9 @@ class MovementCaptureController extends ChangeNotifier {
 
   /// Sent with every step's upload.
   final String sessionId;
+
+  /// Minimum time between analysed frames for this session.
+  final Duration analysisInterval;
 
   /// Fired only when the operator picks a camera from the list.
   final void Function(CameraDescription camera)? onCameraChanged;
@@ -180,6 +186,15 @@ class MovementCaptureController extends ChangeNotifier {
     DeviceOrientation.portraitDown: 180,
     DeviceOrientation.landscapeRight: 270,
   };
+
+  /// The orientation CameraPreview uses to rotate the Android preview.
+  /// Must match it exactly, or the skeleton won't line up.
+  static DeviceOrientation _previewOrientation(CameraValue v) =>
+      v.isRecordingVideo
+          ? (v.recordingOrientation ?? v.deviceOrientation)
+          : (v.previewPauseOrientation ??
+              v.lockedCaptureOrientation ??
+              v.deviceOrientation);
 
   // ------------------------------------------------------------- queueing
 
@@ -394,7 +409,9 @@ class MovementCaptureController extends ChangeNotifier {
   }
 
   FrameAnalyzer _newAnalyzer() => _analyzerFactory(config,
-      step: currentStep, rotationDegrees: _analysisRotation);
+      step: currentStep,
+      rotationDegrees: _analysisRotation,
+      interval: analysisInterval);
 
   /// Throws CameraException on failure; callers handle it.
   Future<void> _open(CameraChoice choice) async {
@@ -425,11 +442,11 @@ class MovementCaptureController extends ChangeNotifier {
   int _analysisRotation() {
     final choice = _selected;
     final cam = _camera;
-    if (choice == null || cam == null) return config.cameraRotationDegrees;
+    if (choice == null || cam == null) return config.cameraRotationDegrees ?? 0;
     return analysisRotationDegrees(
       kind: choice.kind,
       sensorOrientation: choice.description.sensorOrientation,
-      screenDegrees: _orientationDegrees[cam.value.deviceOrientation] ?? 0,
+      screenDegrees: _orientationDegrees[_previewOrientation(cam.value)] ?? 0,
       configRotation: config.cameraRotationDegrees,
       isIOS: _isIOS,
     );

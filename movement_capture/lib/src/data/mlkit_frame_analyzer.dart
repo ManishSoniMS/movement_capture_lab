@@ -23,7 +23,9 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
     this._config, {
     required this.step,
     required int Function() rotationDegrees,
+    required Duration interval,
   })  : _rotationDegrees = rotationDegrees,
+        _interval = interval,
         _pose = step.usesPose
             ? PoseDetector(
                 options: PoseDetectorOptions(
@@ -54,6 +56,12 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
   final CaptureStep step;
   final MovementCaptureConfig _config;
   final int Function() _rotationDegrees;
+  final Duration _interval;
+
+  /// Full-body step: the face detector runs on every 3rd analysis; the last
+  /// result is reused in between.
+  int _faceTick = 0;
+  List<Face> _lastFaces = const [];
   final PoseDetector? _pose;
   final FaceDetector? _faces;
 
@@ -81,7 +89,7 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
   @override
   Future<FrameCheck?> analyze(CameraImage image) async {
     final now = DateTime.now();
-    if (_busy || now.difference(_lastRun) < _config.analysisInterval) {
+    if (_busy || now.difference(_lastRun) < _interval) {
       return null;
     }
     _busy = true;
@@ -99,9 +107,14 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
 
       final poseFuture =
           _pose?.processImage(input) ?? Future.value(const <Pose>[]);
-      final faceFuture =
-          _faces?.processImage(input) ?? Future.value(const <Face>[]);
+      final runFace = _faces != null &&
+          (step != CaptureStep.fullBody || _faceTick++ % 3 == 0);
+      final faceFuture = runFace
+          ? _faces.processImage(input)
+          : Future.value(
+              step == CaptureStep.fullBody ? _lastFaces : const <Face>[]);
       final (poses, faces) = await (poseFuture, faceFuture).wait;
+      if (runFace && step == CaptureStep.fullBody) _lastFaces = faces;
 
       final issues = <CaptureIssue>{};
       final lightIssue = luma.issueFor(_config);

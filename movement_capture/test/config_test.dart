@@ -33,14 +33,51 @@ void main() {
     expect(c.orientation, CaptureOrientation.auto);
   });
 
-  test('mirroring defaults differ by platform for the front camera', () {
+  test('mirroring defaults: USB on, front and back off, on both platforms', () {
     final c = MovementCaptureConfig();
+    for (final p in [TargetPlatform.android, TargetPlatform.iOS]) {
+      expect(c.mirrorPreviewFor(CameraKind.external, p), isTrue);
+      expect(c.mirrorPreviewFor(CameraKind.front, p), isFalse);
+      expect(c.mirrorPreviewFor(CameraKind.back, p), isFalse);
+    }
+  });
+
+  test('skeleton flip only for the Android front camera', () {
+    final c = MovementCaptureConfig();
+    expect(c.overlayFlipFor(CameraKind.front, TargetPlatform.android), isTrue);
+    expect(c.overlayFlipFor(CameraKind.front, TargetPlatform.iOS), isFalse);
     expect(
-        c.mirrorPreviewFor(CameraKind.front, TargetPlatform.android), isTrue);
-    expect(c.mirrorPreviewFor(CameraKind.front, TargetPlatform.iOS), isFalse);
-    expect(c.mirrorPreviewFor(CameraKind.external, TargetPlatform.iOS), isTrue);
+        c.overlayFlipFor(CameraKind.external, TargetPlatform.android), isFalse);
+    expect(c.overlayFlipFor(CameraKind.back, TargetPlatform.android), isFalse);
+  });
+
+  test('analysis interval: 66 ms, 150 ms on low-memory devices, override wins',
+      () {
     expect(
-        c.mirrorPreviewFor(CameraKind.back, TargetPlatform.android), isFalse);
+        MovementCaptureConfig()
+            .effectiveAnalysisInterval(lowMemoryDevice: false),
+        const Duration(milliseconds: 66));
+    expect(
+        MovementCaptureConfig()
+            .effectiveAnalysisInterval(lowMemoryDevice: true),
+        const Duration(milliseconds: 150));
+    expect(
+        MovementCaptureConfig(
+                analysisInterval: const Duration(milliseconds: 100))
+            .effectiveAnalysisInterval(lowMemoryDevice: true),
+        const Duration(milliseconds: 100));
+  });
+
+  test('rotation override accepts null and quarter turns only', () {
+    expect(MovementCaptureConfig().cameraRotationDegrees, isNull);
+    expect(
+        MovementCaptureConfig(cameraRotationDegrees: 90).cameraRotationDegrees,
+        90);
+  });
+
+  test('skeleton draws uncertain points from likelihood 0.2', () {
+    expect(MovementCaptureConfig().skeletonMinLikelihood, 0.2);
+    expect(MovementCaptureConfig().minLandmarkLikelihood, 0.5);
   });
 
   test('explicit mirroring overrides the platform default', () {

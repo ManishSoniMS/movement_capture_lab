@@ -56,50 +56,58 @@ void main() {
   });
 
   group('analysisRotationDegrees', () {
-    test('iOS built-in cameras use the sensor orientation only', () {
-      for (final kind in [CameraKind.front, CameraKind.back]) {
+    test('iOS needs no rotation: the plugin already turns the frames', () {
+      for (final kind in CameraKind.values) {
         expect(
           analysisRotationDegrees(
               kind: kind,
               sensorOrientation: 90,
               screenDegrees: 270,
-              configRotation: 0,
               isIOS: true),
-          90,
+          0,
         );
       }
     });
 
-    test('iOS USB camera still uses the config rotation', () {
-      expect(
-        analysisRotationDegrees(
-            kind: CameraKind.external,
-            sensorOrientation: 0,
-            screenDegrees: 0,
-            configRotation: 180,
-            isIOS: true),
-        180,
-      );
-    });
-
-    test('USB camera uses the fixed config rotation, ignoring the screen', () {
+    test('an explicit override wins on every platform and camera', () {
       expect(
         analysisRotationDegrees(
             kind: CameraKind.external,
             sensorOrientation: 0,
             screenDegrees: 270,
-            configRotation: 90),
+            configRotation: 180),
+        180,
+      );
+      expect(
+        analysisRotationDegrees(
+            kind: CameraKind.front,
+            sensorOrientation: 270,
+            screenDegrees: 90,
+            configRotation: 90,
+            isIOS: true),
         90,
+      );
+    });
+
+    test('USB camera follows the back-camera rule', () {
+      expect(
+        analysisRotationDegrees(
+            kind: CameraKind.external,
+            sensorOrientation: 0,
+            screenDegrees: 270),
+        90, // (0 - 270 + 360) % 360
+      );
+      expect(
+        analysisRotationDegrees(
+            kind: CameraKind.external, sensorOrientation: 0, screenDegrees: 90),
+        270,
       );
     });
 
     test('front camera adds screen rotation to sensor orientation', () {
       expect(
         analysisRotationDegrees(
-            kind: CameraKind.front,
-            sensorOrientation: 270,
-            screenDegrees: 90,
-            configRotation: 0),
+            kind: CameraKind.front, sensorOrientation: 270, screenDegrees: 90),
         0, // (270 + 90) % 360
       );
     });
@@ -107,10 +115,7 @@ void main() {
     test('back camera subtracts screen rotation from sensor orientation', () {
       expect(
         analysisRotationDegrees(
-            kind: CameraKind.back,
-            sensorOrientation: 90,
-            screenDegrees: 270,
-            configRotation: 0),
+            kind: CameraKind.back, sensorOrientation: 90, screenDegrees: 270),
         180, // (90 - 270 + 360) % 360
       );
     });

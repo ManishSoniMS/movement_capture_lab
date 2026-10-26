@@ -57,6 +57,7 @@ All thresholds are in config.
 **Consequences:** Re-vendor on every `camera` upgrade (see `PATCHES.md`). Remove once upstream supports it.
 
 ### D-011 · Frame format and rotation per platform
+**Superseded by D-026 / D-027** (the frame format part still holds).
 **Decision:**
 - **Frame format:** Android NV21, iOS BGRA8888.
 - **Rotation for ML Kit:** USB camera uses `cameraRotationDegrees`; iOS built-in uses the sensor orientation; Android built-in uses sensor ± screen orientation.
@@ -64,6 +65,7 @@ All thresholds are in config.
 **Why:** ML Kit needs these. USB cameras don't rotate with the tablet.
 
 ### D-012 · Mirroring
+**Superseded by D-026 / D-027**
 **Decision:** Preview mirroring is configurable per camera type, with platform defaults (USB on; front on for Android, off for iOS; back off). Files are never changed. Uploads report `fileMirrored` (iOS front camera).
 **Why:** The iOS plugin already mirrors the front camera in both the preview and the file.
 
@@ -120,3 +122,15 @@ All thresholds are in config.
 ### D-025 · Documentation is part of every change
 **Decision:** Each package change updates CHANGELOG.md. Each decision updates this file. Contract changes update README.md and ARCHITECTURE.md in the same PR.
 **Why:** This is a plug-and-play library; integrators rely on the docs.
+
+### D-026 · Rotation follows the preview, not the physical camera
+**Decision:** Analysed frames get the rotation that makes them match the on-screen preview: iOS 0 (the plugin rotates frames itself); Android `(sensor ± screen)` using CameraPreview's own orientation source, for front, back and USB cameras. `cameraRotationDegrees` is only an override.
+**Why:** The skeleton is drawn over the preview; any other rule misaligns it. The old fixed 0° for USB cameras and sensor-based rotation on iOS were both wrong.
+
+### D-027 · Mirroring: system first, then optional display flip
+**Decision:** Front cameras are already mirrored by the system on both platforms, so there is no extra flip by default; USB cameras get a mirror view. The skeleton gets its own flip only where frames and preview differ (Android front).
+**Why:** The previous Android default mirrored the front preview twice and swapped the skeleton's left and right.
+
+### D-028 · Faster, smoother skeleton
+**Decision:** Analyse up to ~15 frames/s (150 ms on low-memory devices), run the full-body face count every 3rd analysis, glide 50 ms, and draw uncertain points faded down to likelihood 0.2 (the checks still need 0.5).
+**Why:** At 6–7 analyses/s with a 150 ms glide the skeleton trailed movement, and hands and feet disappeared during motion.

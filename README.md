@@ -32,7 +32,7 @@ Android 7+ (API 24) and iOS 15.5+. It needs a real device: the camera and ML Kit
 | Timing             | Full-body duration, countdown (0 = mode default), stability, grace, restarts, analysis rate          |
 | Steps              | Pick steps, close-up duration, back camera for the feet step                                         |
 | Mode and voice     | assisted / selfGuided, text-to-speech on/off, language                                               |
-| Camera             | Rotation for USB camera checks, resolution, mirroring (Auto/On/Off), orientation, last chosen camera |
+| Camera             | Rotation for analysis (Auto by default), resolution, mirroring (Auto/On/Off), orientation, last chosen camera |
 | Framing / Lighting | Live-tunable thresholds                                                                              |
 | Upload             | Mock (succeeds) · Mock (always fails) · Keep clip for inspection · Real HTTP endpoint                |
 | Tools              | Show skeleton, Debug overlay, Copy settings, Purge cache, Delete inspection clips                    |

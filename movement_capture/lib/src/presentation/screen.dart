@@ -72,6 +72,7 @@ class _MovementCaptureScreenState extends State<MovementCaptureScreen>
       config: widget.config,
       uploader: widget.uploader,
       onCameraChanged: widget.onCameraChanged,
+      lowMemoryDevice: widget.support.has(SupportIssueCode.lowMemoryDevice),
     );
     final voice = widget.voice;
     if (voice != null && widget.config.speaks) {
@@ -335,13 +336,20 @@ class _CaptureBody extends StatelessWidget {
                   children: [
                     _SafeZoneOverlay(inset: controller.config.safeZoneInset),
                     if (controller.config.showSkeleton || showDebug)
-                      SkeletonLayer(
-                        frames: controller.overlay,
-                        colors: ui.skeleton,
-                        minLikelihood: controller.config.skeletonMinLikelihood,
-                        transition: controller.config.analysisInterval,
-                        debugMetrics: showDebug ? controller.metrics : null,
-                        debugBadColor: ui.error,
+                      Transform.flip(
+                        flipX: controller.selectedCamera != null &&
+                            controller.config.overlayFlipFor(
+                                controller.selectedCamera!.kind,
+                                defaultTargetPlatform),
+                        child: SkeletonLayer(
+                          frames: controller.overlay,
+                          colors: ui.skeleton,
+                          minLikelihood:
+                              controller.config.skeletonMinLikelihood,
+                          transition: const Duration(milliseconds: 50),
+                          debugMetrics: showDebug ? controller.metrics : null,
+                          debugBadColor: ui.error,
+                        ),
                       ),
                   ],
                 ),

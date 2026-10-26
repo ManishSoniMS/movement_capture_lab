@@ -191,8 +191,14 @@ class _HomePageState extends State<HomePage> {
               (v) => _s.graceMs = v),
           _slider('Auto restarts before operator', _s.maxRestarts, 0, 6, 6,
               _int, (v) => _s.maxRestarts = v),
-          _slider('Analysis interval (ms)', _s.analysisIntervalMs, 50, 500, 18,
-              _int, (v) => _s.analysisIntervalMs = v),
+          _slider(
+              'Analysis interval (ms, 0 = automatic)',
+              _s.analysisIntervalMs,
+              0,
+              500,
+              50,
+              _int,
+              (v) => _s.analysisIntervalMs = v),
           const _Section('Steps'),
           for (final step in CaptureStep.values)
             CheckboxListTile(
@@ -253,12 +259,15 @@ class _HomePageState extends State<HomePage> {
           const _Section('Camera'),
           ListTile(
             title: const Text('Rotation for analysis'),
-            trailing: DropdownButton<int>(
+            trailing: DropdownButton<int?>(
               value: _s.rotation,
-              items: const [0, 90, 180, 270]
-                  .map((d) => DropdownMenuItem(value: d, child: Text('$d°')))
-                  .toList(),
-              onChanged: (v) => setState(() => _s.rotation = v ?? 0),
+              items: [
+                const DropdownMenuItem<int?>(
+                    value: null, child: Text('Auto (recommended)')),
+                for (final d in const [0, 90, 180, 270])
+                  DropdownMenuItem<int?>(value: d, child: Text('$d°')),
+              ],
+              onChanged: (v) => setState(() => _s.rotation = v),
             ),
           ),
           ListTile(

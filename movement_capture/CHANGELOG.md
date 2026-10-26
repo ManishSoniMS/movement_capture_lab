@@ -4,6 +4,19 @@ All notable changes to `movement_capture`. The format follows [Keep a Changelog]
 
 ## [Unreleased]
 
+## [0.7.1] · 2026-10-26
+### Fixed
+- Skeleton not aligned with the person: analysed frames are now rotated exactly as the preview is (iOS: frames are already upright; Android USB cameras: sensor/screen rule instead of a fixed 0°).
+- Android front camera: left/right of the skeleton swapped; the preview was mirrored twice.
+- Missing hand and leg points (caused by the rotation error and a too-strict drawing threshold).
+- Skeleton lagging behind movement.
+### Changed
+- **BREAKING:** `cameraRotationDegrees` is now `int?` (null = automatic, the new default).
+- **BREAKING:** `analysisInterval` is now `Duration?` (null = 66 ms, 150 ms on low-memory devices).
+- `skeletonMinLikelihood` default 0.5 → 0.2; uncertain points are drawn more transparent.
+- `mirrorFrontPreview` default is now off on Android too.
+- The full-body face count runs on every 3rd analysis.
+
 ## [0.7.0] · 2026-10-26
 ### Added
 - `CaptureMode.assisted` (B2B) and `CaptureMode.selfGuided` (B2C).

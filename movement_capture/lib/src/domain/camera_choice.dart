@@ -72,19 +72,20 @@ CameraChoice? pickDefaultCamera(
   return choices.first;
 }
 
-/// Rotation handed to ML Kit. A USB camera does not rotate with the tablet, so
-/// it uses the fixed [configRotation]. Built-in cameras on iOS use the sensor
-/// orientation; on Android, the standard ML Kit rule from sensor orientation
-/// and the current screen rotation.
+/// Rotation handed to ML Kit so the analysed frame matches the preview on
+/// screen. [configRotation] (when set) overrides everything. iOS: 0, because
+/// the plugin already rotates its frames to the screen. Android: the rule
+/// `CameraPreview` and the camera service apply to the preview, for front,
+/// back and USB cameras alike.
 int analysisRotationDegrees({
   required CameraKind kind,
   required int sensorOrientation,
   required int screenDegrees,
-  required int configRotation,
+  int? configRotation,
   bool isIOS = false,
 }) {
-  if (kind == CameraKind.external) return configRotation;
-  if (isIOS) return sensorOrientation; // as in Google's ML Kit sample
+  if (configRotation != null) return configRotation;
+  if (isIOS) return 0;
   return kind == CameraKind.front
       ? (sensorOrientation + screenDegrees) % 360
       : (sensorOrientation - screenDegrees + 360) % 360;

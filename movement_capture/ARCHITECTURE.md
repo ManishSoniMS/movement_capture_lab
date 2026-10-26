@@ -128,10 +128,9 @@ camera frame (Android NV21 / iOS BGRA, ~30 fps)
           └─ while recording: LandmarkTrack sample (t ms)
 ```
 
-Rotation for ML Kit:
-- **USB camera:** `config.cameraRotationDegrees`, because it doesn't turn with the tablet.
-- **iOS built-in:** the sensor orientation.
-- **Android built-in:** sensor ± screen orientation.
+**Rotation for ML Kit** must match the preview on screen.
+- **iOS:** 0. `camera_avfoundation` rotates its frames to the screen orientation, and the preview is built from the same frames.
+- **Android:** `CameraPreview` turns the preview by the screen orientation, and the camera service applies the sensor orientation. The analysis applies the same: back and USB cameras `(sensor − screen + 360) % 360`; front `(sensor + screen) % 360`. Here "screen" is the recording orientation while recording, otherwise the paused / locked / device orientation, exactly as `CameraPreview` decides.
 
 ## 6. Platform specifics
 
@@ -139,7 +138,7 @@ Rotation for ML Kit:
 |---------------------------|-------------------------------------------------------------|-------------------------------------------------------------------------|
 | Camera implementation     | `camera_android` (Camera2), a direct dependency of the host | `camera_avfoundation`, patched to list `.external` devices (iPadOS 17+) |
 | Frame format              | NV21                                                        | BGRA8888                                                                |
-| Front camera preview      | Mirrored by the library                                     | Already mirrored by the plugin (preview **and file**)                   |
+| Front camera              | System mirrors the preview only; the skeleton is flipped to match | Plugin mirrors preview, frames and file together; no extra flip   |
 | Plugin's recording folder | Cache root (`REC*.mp4`)                                     | `tmp/camera/videos/`                                                    |
 | Keep screen on            | `FLAG_KEEP_SCREEN_ON`, restored on close                    | `isIdleTimerDisabled`, restored on close                                |
 | Permission declared       | Manifest `CAMERA` (checked natively)                        | `NSCameraUsageDescription` (checked natively)                           |

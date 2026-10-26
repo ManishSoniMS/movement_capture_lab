@@ -176,22 +176,38 @@ class _SkeletonPainter extends CustomPainter {
           if (p.likelihood >= minLikelihood && _inside(p.x, p.y)) p.type: p,
       };
 
+      // Less certain points are drawn more transparent (0.35 → 1.0 between
+      // minLikelihood and 0.7), so hands and feet stay visible while moving.
+      double alphaOf(double likelihood) {
+        if (likelihood >= 0.7) return 1;
+        final span = 0.7 - minLikelihood;
+        if (span <= 0) return 1;
+        final t = ((likelihood - minLikelihood) / span).clamp(0.0, 1.0);
+        return 0.35 + 0.65 * t;
+      }
+
       for (final c in poseConnections) {
         final a = visible[c.from];
         final b = visible[c.to];
         if (a == null || b == null) continue;
+        final alpha =
+            alphaOf(a.likelihood < b.likelihood ? a.likelihood : b.likelihood);
         final p1 = at(a.x, a.y), p2 = at(b.x, b.y);
+        outline.color = Colors.black.withValues(alpha: 0.45 * alpha);
         canvas.drawLine(p1, p2, outline);
-        line.color = colors.forRegion(c.region);
+        line.color = colors.forRegion(c.region).withValues(alpha: alpha);
         canvas.drawLine(p1, p2, line);
       }
 
       for (final p in visible.values) {
         final o = at(p.x, p.y);
+        final alpha = alphaOf(p.likelihood);
+        dotOutline.color = Colors.black.withValues(alpha: 0.45 * alpha);
         canvas.drawCircle(o, radius + 1.5, dotOutline);
-        dot.color = colors.forRegion(p.region);
+        dot.color = colors.forRegion(p.region).withValues(alpha: alpha);
         canvas.drawCircle(o, radius, dot);
       }
+      outline.color = Colors.black.withValues(alpha: 0.45); // for face boxes
 
       for (final box in frame.faces) {
         final r = RRect.fromRectAndRadius(
@@ -207,7 +223,8 @@ class _SkeletonPainter extends CustomPainter {
       for (final contour in frame.faceContours) {
         if (contour.length < 2) continue;
         final path = Path()
-          ..moveTo(contour.first.dx * size.width, contour.first.dy * size.height);
+          ..moveTo(
+              contour.first.dx * size.width, contour.first.dy * size.height);
         for (final p in contour.skip(1)) {
           path.lineTo(p.dx * size.width, p.dy * size.height);
         }

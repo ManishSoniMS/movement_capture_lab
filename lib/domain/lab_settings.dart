@@ -10,7 +10,7 @@ class LabSettings {
   double stableMs = 1500;
   double graceMs = 400;
   double maxRestarts = 3;
-  int rotation = 0;
+  int? rotation; // null = automatic
   ResolutionPreset resolution = ResolutionPreset.high;
   double safeZoneInset = 0.075;
   double minLikelihood = 0.5;
@@ -18,7 +18,7 @@ class LabSettings {
   double maxLuma = 200;
   double maxClipped = 0.25;
   double minCenterToBorder = 0.6;
-  double analysisIntervalMs = 150;
+  double analysisIntervalMs = 0; // 0 = automatic
   bool? mirrorExternal; // null = platform default
   bool? mirrorFront;
   bool? mirrorBack;
@@ -82,7 +82,9 @@ class LabSettings {
         maxMeanLuma: maxLuma.round(),
         maxClippedFraction: maxClipped,
         minCenterToBorderLuma: minCenterToBorder,
-        analysisInterval: Duration(milliseconds: analysisIntervalMs.round()),
+        analysisInterval: analysisIntervalMs < 1
+            ? null
+            : Duration(milliseconds: analysisIntervalMs.round()),
         metadata: {
           'chatSessionId': 'lab-${DateTime.now().millisecondsSinceEpoch}'
         },
@@ -92,10 +94,10 @@ class LabSettings {
   String summary() =>
       'duration=${maxDurationS.round()}s countdown=${countdownS < 1 ? 'auto' : '${countdownS.round()}s'} '
       'stable=${stableMs.round()}ms grace=${graceMs.round()}ms restarts=${maxRestarts.round()} '
-      'rotation=$rotation res=${resolution.name} inset=${safeZoneInset.toStringAsFixed(3)} '
+      'rotation=${rotation ?? 'auto'} res=${resolution.name} inset=${safeZoneInset.toStringAsFixed(3)} '
       'likelihood=${minLikelihood.toStringAsFixed(2)} luma=${minLuma.round()}–${maxLuma.round()} '
       'clipped=${maxClipped.toStringAsFixed(2)} centre/border=${minCenterToBorder.toStringAsFixed(2)} '
-      'interval=${analysisIntervalMs.round()}ms '
+      'interval=${analysisIntervalMs < 1 ? 'auto' : '${analysisIntervalMs.round()}ms'} '
       'mirror(usb/front/back)=${mirrorExternal ?? 'auto'}/${mirrorFront ?? 'auto'}/${mirrorBack ?? 'auto'} '
       'orientation=${orientation.name} noLiveChecks=$allowNoLiveChecks skeleton=$showSkeleton '
       'steps=${steps.map((s) => s.name).join('+')} '
