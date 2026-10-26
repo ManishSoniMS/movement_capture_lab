@@ -187,7 +187,24 @@ class MovementCaptureIcons {
 /// Optional colour overrides. Null = taken from the host theme
 /// (colorScheme.error / colorScheme.primary).
 class MovementCaptureStyle {
-  const MovementCaptureStyle({this.errorColor, this.activeColor});
+  const MovementCaptureStyle({
+    this.errorColor,
+    this.activeColor,
+    this.skeletonBodyColor,
+    this.skeletonFaceColor,
+    this.skeletonHandColor,
+    this.skeletonFootColor,
+  });
+
+  /// Default: colorScheme.error.
   final Color? errorColor;
+
+  /// Default: colorScheme.primary.
   final Color? activeColor;
+
+  /// Defaults: primary, tertiary, secondary, inversePrimary.
+  final Color? skeletonBodyColor;
+  final Color? skeletonFaceColor;
+  final Color? skeletonHandColor;
+  final Color? skeletonFootColor;
 }

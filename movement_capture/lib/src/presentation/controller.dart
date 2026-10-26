@@ -14,6 +14,7 @@ import '../domain/capture_storage.dart';
 import '../domain/config.dart';
 import '../domain/frame_analyzer.dart';
 import '../domain/frame_metrics.dart';
+import '../domain/pose_topology.dart';
 import '../domain/quality_timer.dart';
 import '../domain/uploader.dart';
 import 'serial_queue.dart';
@@ -51,6 +52,9 @@ class MovementCaptureController extends ChangeNotifier {
 
   /// Latest analysis numbers, for the debug overlay.
   final ValueNotifier<FrameMetrics?> metrics = ValueNotifier(null);
+
+  /// What the skeleton overlay draws. Null = draw nothing.
+  final ValueNotifier<OverlayFrame?> overlay = ValueNotifier(null);
 
   CaptureState _state = const Initializing();
   CaptureState get state => _state;
@@ -217,8 +221,8 @@ class MovementCaptureController extends ChangeNotifier {
   Future<void> resume() => _serial(() async {
         if (_disposed) return;
         final s = _state;
-        final cameFromSettings =
-            s is CameraUnavailable && s.reason == CameraFailure.permissionDenied;
+        final cameFromSettings = s is CameraUnavailable &&
+            s.reason == CameraFailure.permissionDenied;
         if (!_suspended && !cameFromSettings) return;
         _suspended = false;
         await _releaseCamera();
@@ -232,6 +236,7 @@ class MovementCaptureController extends ChangeNotifier {
     _uploadCancellation?.cancel(); // don't make teardown wait for an upload
     unawaited(_serial(_teardownImpl));
     metrics.dispose();
+    overlay.dispose();
     super.dispose();
   }
 
@@ -587,6 +592,7 @@ class MovementCaptureController extends ChangeNotifier {
 
   void _onCheck(FrameCheck check) {
     metrics.value = check.metrics;
+    overlay.value = check.overlay;
     final r = _quality.feed(check.topIssue, check.at);
 
     switch (_state) {
@@ -712,6 +718,7 @@ class MovementCaptureController extends ChangeNotifier {
   }
 
   Future<void> _releaseCamera() async {
+    if (!_disposed) overlay.value = null;
     _frameWatchdog?.cancel();
     final cam = _camera;
     _camera = null;
@@ -746,6 +753,11 @@ class MovementCaptureController extends ChangeNotifier {
   void _setState(CaptureState next) {
     if (_disposed) return;
     _state = next;
+    // The overlay only makes sense while frames are being analysed.
+    final analysing = next is Checking ||
+        next is CountingDown ||
+        (next is Recording && next.liveChecks);
+    if (!analysing && overlay.value != null) overlay.value = null;
     notifyListeners();
   }
 }

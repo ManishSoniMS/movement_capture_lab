@@ -39,3 +39,13 @@
 **Why:** PROMPT.md paths (`packages/`, `apps/lab`, flat `src/`) mapped to the existing layers; `NativeSupportInfo` is in `domain` so the pure evaluator stays plugin-free, `MethodChannel` code is in `data`. Screen calls the static `NativeBridge` directly (no domain interface), a small deviation from the layer rule to match the prompt.
 
 **Pros:** hosts can hide the feature; `open` can't crash on missing iOS plist entry; decision logic unit-tested. **Cons:** breaking `open` return type; extra native code to maintain; `screen.dart` depends on `data/native_bridge`. Tests were written together with the implementation, so no separate red run was recorded. Package tests (60) and analyze clean; `flutter build apk --debug` and `flutter build ios --no-codesign` succeed. V35-V41 (device checks) NOT run.
+
+## 2026-10-26: Skeleton overlay (PROMPT.md, Revision 6)
+
+**Files:** `domain/pose_topology.dart` (new), `presentation/skeleton_layer.dart` (new), `test/pose_topology_test.dart` (new); edited `domain/frame_metrics.dart` (`FrameCheck.overlay`), `domain/config.dart` (`showSkeleton`, `skeletonMinLikelihood`), `data/mlkit_frame_analyzer.dart`, `presentation/controller.dart` (`overlay` notifier, cleared when analysis stops or camera is released), `presentation/customization.dart` (four skeleton colours), `presentation/screen.dart`, `presentation/debug_overlay.dart` (`LandmarkLayer` removed); lab `lab_settings.dart` and `home_page.dart` (Show skeleton switch).
+
+**Why this approach:** PROMPT put `pose_topology.dart` in an `analysis/` folder and imported ML Kit's `PoseLandmarkType`. The repo keeps ML Kit out of `domain/`, so the topology uses its own `PoseJoint` enum with the same 33 names. The analyzer maps by name (`PoseJoint.values.byName`), and a test checks the two name sets stay equal.
+
+**Pros:** `domain` and `presentation` stay free of ML Kit; topology is unit-tested without a device. **Cons:** a second enum to keep in sync if ML Kit adds a landmark; the name-equality test catches that.
+
+**Not verified:** V42-V46 need a device (alignment per camera, colours, smoothness, clearing). TDD red phase was a compile failure (missing types), not a behavioural failure.

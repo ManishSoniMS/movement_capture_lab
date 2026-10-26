@@ -1,5 +1,5 @@
 import 'dart:typed_data';
-import 'dart:ui' show Size;
+import 'dart:ui' show Rect, Size;
 
 import 'package:camera/camera.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
@@ -10,6 +10,7 @@ import '../domain/config.dart';
 import '../domain/frame_analyzer.dart';
 import '../domain/frame_metrics.dart';
 import '../domain/luma_stats.dart';
+import '../domain/pose_topology.dart';
 
 /// ML Kit pose + face detection plus luma stats.
 class MlKitFrameAnalyzer implements FrameAnalyzer {
@@ -81,17 +82,24 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
       if (lightIssue != null) issues.add(lightIssue);
       if (faces.length > 1) issues.add(CaptureIssue.multiplePeople);
 
+      final upright = _uprightSize(image, rotation);
       var points = const <LandmarkPoint>[];
+      var allPose = const <PosePoint>[];
       if (poses.isEmpty) {
         issues.add(CaptureIssue.noPerson);
       } else {
-        points = _evaluate(poses.first, _uprightSize(image, rotation));
+        points = _evaluate(poses.first, upright);
+        allPose = _allPoints(poses.first, upright);
         if (points.any((p) => !p.ok)) issues.add(CaptureIssue.outOfFrame);
       }
+      final faceBoxes = [
+        for (final f in faces) _normalisedRect(f.boundingBox, upright),
+      ];
 
       return FrameCheck(
         issues: issues,
         at: now,
+        overlay: OverlayFrame(pose: allPose, faces: faceBoxes),
         metrics: FrameMetrics(
           luma: luma,
           faces: faces.length,
@@ -166,6 +174,23 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
         ? Size(image.height.toDouble(), image.width.toDouble())
         : Size(image.width.toDouble(), image.height.toDouble());
   }
+
+  List<PosePoint> _allPoints(Pose pose, Size upright) => [
+        for (final lm in pose.landmarks.values)
+          PosePoint(
+            type: PoseJoint.values.byName(lm.type.name),
+            x: lm.x / upright.width,
+            y: lm.y / upright.height,
+            likelihood: lm.likelihood,
+          ),
+      ];
+
+  Rect _normalisedRect(Rect r, Size upright) => Rect.fromLTRB(
+        r.left / upright.width,
+        r.top / upright.height,
+        r.right / upright.width,
+        r.bottom / upright.height,
+      );
 
   List<LandmarkPoint> _evaluate(Pose pose, Size upright) {
     final inset = _config.safeZoneInset;

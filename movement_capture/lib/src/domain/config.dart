@@ -20,6 +20,8 @@ class MovementCaptureConfig {
     this.mirrorBackPreview,
     this.orientation = CaptureOrientation.auto,
     this.allowRecordingWithoutLiveChecks = true,
+    this.showSkeleton = true,
+    this.skeletonMinLikelihood = 0.5,
     this.safeZoneInset = 0.075,
     this.minLandmarkLikelihood = 0.5,
     this.minMeanLuma = 60,
@@ -69,6 +71,13 @@ class MovementCaptureConfig {
   /// When a device cannot send frames during recording: true = record without
   /// checks and report liveChecks=false; false = show the error instead.
   final bool allowRecordingWithoutLiveChecks;
+
+  /// Draw the tracked skeleton on the preview (independent of the debug
+  /// overlay).
+  final bool showSkeleton;
+
+  /// Points below this likelihood are not drawn.
+  final double skeletonMinLikelihood;
 
   /// Fraction of width/height kept clear at each edge (wide-lens distortion).
   final double safeZoneInset;

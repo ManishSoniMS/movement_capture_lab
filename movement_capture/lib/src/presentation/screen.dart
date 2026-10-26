@@ -16,6 +16,7 @@ import '../domain/uploader.dart';
 import 'controller.dart';
 import 'customization.dart';
 import 'debug_overlay.dart';
+import 'skeleton_layer.dart';
 
 /// Pops with a [MovementCaptureResult]: completed on success, cancelled
 /// otherwise.
@@ -110,11 +111,18 @@ class _MovementCaptureScreenState extends State<MovementCaptureScreen>
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final style = widget.style;
     final ui = _Ui(
       strings: widget.strings,
       icons: widget.icons,
-      error: widget.style.errorColor ?? scheme.error,
-      active: widget.style.activeColor ?? scheme.primary,
+      error: style.errorColor ?? scheme.error,
+      active: style.activeColor ?? scheme.primary,
+      skeleton: SkeletonColors(
+        body: style.skeletonBodyColor ?? scheme.primary,
+        face: style.skeletonFaceColor ?? scheme.tertiary,
+        hand: style.skeletonHandColor ?? scheme.secondary,
+        foot: style.skeletonFootColor ?? scheme.inversePrimary,
+      ),
     );
     return ListenableBuilder(
       listenable: _controller,
@@ -147,11 +155,13 @@ class _Ui {
     required this.icons,
     required this.error,
     required this.active,
+    required this.skeleton,
   });
   final MovementCaptureStrings strings;
   final MovementCaptureIcons icons;
   final Color error;
   final Color active;
+  final SkeletonColors skeleton;
 }
 
 Future<void> _showCameraSheet(
@@ -288,11 +298,14 @@ class _CaptureBody extends StatelessWidget {
                   fit: StackFit.expand,
                   children: [
                     _SafeZoneOverlay(inset: controller.config.safeZoneInset),
-                    if (showDebug)
-                      LandmarkLayer(
-                        metrics: controller.metrics,
-                        okColor: ui.active,
-                        badColor: ui.error,
+                    if (controller.config.showSkeleton || showDebug)
+                      SkeletonLayer(
+                        frames: controller.overlay,
+                        colors: ui.skeleton,
+                        minLikelihood: controller.config.skeletonMinLikelihood,
+                        transition: controller.config.analysisInterval,
+                        debugMetrics: showDebug ? controller.metrics : null,
+                        debugBadColor: ui.error,
                       ),
                   ],
                 ),

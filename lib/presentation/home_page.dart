@@ -300,6 +300,12 @@ class _HomePageState extends State<HomePage> {
           ],
           const _Section('Tools'),
           SwitchListTile(
+            title: const Text('Show skeleton'),
+            subtitle: const Text('Independent of the debug overlay'),
+            value: _s.showSkeleton,
+            onChanged: (v) => setState(() => _s.showSkeleton = v),
+          ),
+          SwitchListTile(
             title: const Text('Debug overlay'),
             value: _s.debugOverlay,
             onChanged: (v) => setState(() => _s.debugOverlay = v),

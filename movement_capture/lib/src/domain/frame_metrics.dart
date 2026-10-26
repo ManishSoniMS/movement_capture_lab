@@ -1,5 +1,6 @@
 import 'capture_issue.dart';
 import 'luma_stats.dart';
+import 'pose_topology.dart';
 
 /// Thrown by a [FrameAnalyzer] when the camera stream format is unusable.
 class UnsupportedFrameFormat implements Exception {
@@ -48,11 +49,18 @@ class FrameMetrics {
 }
 
 class FrameCheck {
-  const FrameCheck(
-      {required this.issues, required this.at, required this.metrics});
+  const FrameCheck({
+    required this.issues,
+    required this.at,
+    required this.metrics,
+    this.overlay = OverlayFrame.empty,
+  });
   final Set<CaptureIssue> issues;
   final DateTime at;
   final FrameMetrics metrics;
+
+  /// What the skeleton layer draws for this frame.
+  final OverlayFrame overlay;
 
   CaptureIssue? get topIssue {
     for (final issue in CaptureIssue.values) {

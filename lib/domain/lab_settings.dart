@@ -29,6 +29,7 @@ class LabSettings {
   String? lastCameraId;
   UploaderMode uploaderMode = UploaderMode.mock;
   bool debugOverlay = true;
+  bool showSkeleton = true;
 
   MovementCaptureConfig toConfig() => MovementCaptureConfig(
         maxDuration: Duration(seconds: maxDurationS.round()),
@@ -44,6 +45,7 @@ class LabSettings {
         mirrorBackPreview: mirrorBack,
         orientation: orientation,
         allowRecordingWithoutLiveChecks: allowNoLiveChecks,
+        showSkeleton: showSkeleton,
         safeZoneInset: safeZoneInset,
         minLandmarkLikelihood: minLikelihood,
         minMeanLuma: minLuma.round(),
@@ -65,5 +67,5 @@ class LabSettings {
       'clipped=${maxClipped.toStringAsFixed(2)} centre/border=${minCenterToBorder.toStringAsFixed(2)} '
       'interval=${analysisIntervalMs.round()}ms '
       'mirror(usb/front/back)=${mirrorExternal ?? 'auto'}/${mirrorFront ?? 'auto'}/${mirrorBack ?? 'auto'} '
-      'orientation=${orientation.name} noLiveChecks=$allowNoLiveChecks';
+      'orientation=${orientation.name} noLiveChecks=$allowNoLiveChecks skeleton=$showSkeleton';
 }
