@@ -69,3 +69,13 @@
 **Pros:** no TTS dependency in the package; speech decisions are unit-tested; mute does not replay missed prompts. **Cons:** `countdown` is now nullable (hosts reading `config.countdown` must use `effectiveCountdown`); `VoiceGuide` and the screen wiring are untested because the controller needs a camera; the lab now depends on `flutter_tts`.
 
 **Not verified:** V56-V62 need a device (audibility at 3 m, repeat timing, mute, Hindi voice, text size on a 360 px phone). No Android or iOS build was run for the new plugin. TDD red phase was a compile failure (missing types), not a behavioural failure. 107 package tests pass, package analyze clean, root analyze only the 3 known infos.
+
+## 2026-10-26: Documentation set (PROMPT.md, Revision 9)
+
+**Files:** `movement_capture/README.md` (replaced), new `movement_capture/ARCHITECTURE.md`, `movement_capture/DECISIONS.md`, `movement_capture/CHANGELOG.md`, new `.github/pull_request_template.md`, root `README.md` (replaced), `movement_capture/pubspec.yaml` (`version: 0.7.0`). No Dart code changed.
+
+**Why this approach:** the files were written as given, with these changes because the repo differs from the prompt: (1) the package lives in `movement_capture/` and the lab app at the repo root, so `packages/movement_capture` and `apps/lab` became those paths and the git dependency example uses `path: movement_capture`; (2) the lab README and the repo map share the root `README.md` (one file, map first, lab guide below), since the lab has no folder of its own; (3) the ARCHITECTURE folder map shows the real `domain/ data/ presentation/` layout instead of `analysis/ camera/ storage/ ...`, with `step_uploads.dart` and `voice_guide.dart` listed; (4) the link to `PATCHES.md` is `../third_party/...` so it resolves from the package folder; (5) the package version was still `0.1.0` and is now `0.7.0`.
+
+**Checks:** V63 compared the README config table with `MovementCaptureConfig` (names and defaults match), the upload table with `MovementClip.formFields`, and the `landmarks.json` shape with `LandmarkTrack`. V64: the quick start, uploader and voice snippets compiled in a scratch file in the lab (one `use_build_context_synchronously` info from my wrapper, nothing else); the file was removed. V65: every relative link in the docs resolves; mermaid rendering on GitHub not checked.
+
+**Not done:** the `movement_capture-v0.7.0` tag. The prompt says to tag after the lab checks pass on a device, and none of V35-V62 has been run. The `landmarks.json` examples were not compared with a real inspection file (V55 needs a device).
