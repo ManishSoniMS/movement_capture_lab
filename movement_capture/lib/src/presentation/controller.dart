@@ -212,10 +212,16 @@ class MovementCaptureController extends ChangeNotifier {
         _setState(const Initializing());
       });
 
-  /// App came back: reopen only if [suspend] released the camera.
+  /// App came back: reopen if [suspend] released the camera, or retry if the
+  /// user just came back from Settings after camera access was off.
   Future<void> resume() => _serial(() async {
-        if (_disposed || !_suspended) return;
+        if (_disposed) return;
+        final s = _state;
+        final cameFromSettings =
+            s is CameraUnavailable && s.reason == CameraFailure.permissionDenied;
+        if (!_suspended && !cameFromSettings) return;
         _suspended = false;
+        await _releaseCamera();
         await _startImpl();
       });
 

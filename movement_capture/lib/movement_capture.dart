@@ -6,6 +6,15 @@ export 'package:camera/camera.dart'
 
 export 'src/api.dart';
 export 'src/domain/camera_choice.dart';
+export 'src/domain/capture_step.dart';
+export 'src/domain/result.dart';
+export 'src/domain/support_report.dart'
+    show
+        SupportReport,
+        SupportIssue,
+        SupportIssueCode,
+        SupportSeverity,
+        SupportRequirements;
 export 'src/domain/capture_issue.dart';
 export 'src/domain/config.dart';
 export 'src/domain/uploader.dart';

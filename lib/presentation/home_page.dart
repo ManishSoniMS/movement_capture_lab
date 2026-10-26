@@ -19,6 +19,25 @@ class _HomePageState extends State<HomePage> {
   final TextEditingController _url = TextEditingController();
   final TextEditingController _token = TextEditingController();
 
+  SupportReport? _support;
+  bool _checking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _runSupportCheck();
+  }
+
+  Future<void> _runSupportCheck() async {
+    setState(() => _checking = true);
+    final report = await MovementCapture.checkSupport();
+    if (!mounted) return;
+    setState(() {
+      _support = report;
+      _checking = false;
+    });
+  }
+
   @override
   void dispose() {
     _url.dispose();
@@ -43,7 +62,7 @@ class _HomePageState extends State<HomePage> {
       return;
     }
     final settings = _s.summary();
-    final id = await MovementCapture.open(
+    final result = await MovementCapture.open(
       context,
       config: _s.toConfig(),
       uploader: _uploader(),
@@ -51,8 +70,17 @@ class _HomePageState extends State<HomePage> {
       onCameraChanged: (camera) => _s.lastCameraId = camera.name,
     );
     if (!mounted) return;
-    setState(() => _log.insert(0,
-        '${TimeOfDay.now().format(context)}  ${id ?? 'cancelled'}\n$settings'));
+    final ids = result.steps
+        .map((s) =>
+            '${s.step.name}=${s.skipped ? 'skipped' : (s.analysisId ?? '—')}')
+        .join(', ');
+    setState(() {
+      _support = result.support;
+      _log.insert(
+          0,
+          '${TimeOfDay.now().format(context)}  ${result.status.name}'
+          '${ids.isEmpty ? '' : '  $ids'}\n$settings');
+    });
   }
 
   void _snack(String text) =>
@@ -119,6 +147,37 @@ class _HomePageState extends State<HomePage> {
       body: ListView(
         padding: const EdgeInsets.only(bottom: 120),
         children: [
+          const _Section('Support check'),
+          ListTile(
+            leading: _checking
+                ? const SizedBox(
+                    width: 24, height: 24, child: CircularProgressIndicator())
+                : Icon(_support == null
+                    ? Icons.help_outline
+                    : (_support!.canRun ? Icons.check_circle : Icons.block)),
+            title: Text(_support == null
+                ? 'Not checked yet'
+                : 'canRun: ${_support!.canRun} · readyNow: ${_support!.readyNow}'),
+            subtitle: _support == null
+                ? null
+                : Text(_support!.issues.isEmpty
+                    ? 'No issues'
+                    : _support!.issues.map((i) => i.toString()).join('\n')),
+            trailing: TextButton(
+              onPressed: _checking ? null : _runSupportCheck,
+              child: const Text('Run check'),
+            ),
+          ),
+          if (_support != null)
+            ListTile(
+              leading: const Icon(Icons.copy),
+              title: const Text('Copy support report'),
+              onTap: () async {
+                await Clipboard.setData(
+                    ClipboardData(text: _support!.describe()));
+                _snack('Support report copied');
+              },
+            ),
           const _Section('Timing'),
           _slider('Max duration (s, values above 30 are clamped)',
               _s.maxDurationS, 5, 45, 40, _int, (v) => _s.maxDurationS = v),

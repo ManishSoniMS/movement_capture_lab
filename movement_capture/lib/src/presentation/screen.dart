@@ -5,20 +5,26 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../data/native_bridge.dart';
 import '../domain/camera_choice.dart';
 import '../domain/capture_state.dart';
+import '../domain/capture_step.dart';
 import '../domain/config.dart';
+import '../domain/result.dart';
+import '../domain/support_report.dart';
 import '../domain/uploader.dart';
 import 'controller.dart';
 import 'customization.dart';
 import 'debug_overlay.dart';
 
-/// Pops with the analysis id on success, or null on cancel.
+/// Pops with a [MovementCaptureResult]: completed on success, cancelled
+/// otherwise.
 class MovementCaptureScreen extends StatefulWidget {
   const MovementCaptureScreen({
     super.key,
     required this.config,
     required this.uploader,
+    required this.support,
     this.strings = const MovementCaptureStrings(),
     this.icons = const MovementCaptureIcons(),
     this.style = const MovementCaptureStyle(),
@@ -28,6 +34,7 @@ class MovementCaptureScreen extends StatefulWidget {
 
   final MovementCaptureConfig config;
   final MovementUploader uploader;
+  final SupportReport support;
   final MovementCaptureStrings strings;
   final MovementCaptureIcons icons;
   final MovementCaptureStyle style;
@@ -51,6 +58,7 @@ class _MovementCaptureScreenState extends State<MovementCaptureScreen>
         (view.physicalSize / view.devicePixelRatio).shortestSide;
     SystemChrome.setPreferredOrientations(
         widget.config.orientationsFor(shortestSide));
+    unawaited(NativeBridge.setKeepScreenOn(true));
     _controller = MovementCaptureController(
       config: widget.config,
       uploader: widget.uploader,
@@ -80,11 +88,24 @@ class _MovementCaptureScreenState extends State<MovementCaptureScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     SystemChrome.setPreferredOrientations(widget.config.restoreOrientations);
+    unawaited(NativeBridge.setKeepScreenOn(false));
     _controller.dispose(); // stops recording, cancels upload, deletes files
     super.dispose();
   }
 
-  void _close([String? analysisId]) => Navigator.of(context).pop(analysisId);
+  void _close([String? analysisId]) {
+    final result = analysisId == null
+        ? MovementCaptureResult.cancelled(widget.support)
+        : MovementCaptureResult(
+            status: MovementCaptureStatus.completed,
+            support: widget.support,
+            steps: [
+              CaptureStepResult(
+                  step: CaptureStep.fullBody, analysisId: analysisId),
+            ],
+          );
+    Navigator.of(context).pop(result);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -353,9 +374,12 @@ class _CaptureBody extends StatelessWidget {
           onPrimary: controller.retryCamera,
           secondaryLabel: s.cancel,
           onSecondary: () => onClose(),
-          tertiaryLabel:
-              controller.cameras.isNotEmpty ? s.useAnotherCamera : null,
-          onTertiary: () => _showCameraSheet(context, controller, ui),
+          tertiaryLabel: reason == CameraFailure.permissionDenied
+              ? s.openSettings
+              : (controller.cameras.isNotEmpty ? s.useAnotherCamera : null),
+          onTertiary: reason == CameraFailure.permissionDenied
+              ? () => unawaited(NativeBridge.openAppSettings())
+              : () => _showCameraSheet(context, controller, ui),
         ),
       NeedsOperator(:final lastIssue) => _Panel(
           ui: ui,

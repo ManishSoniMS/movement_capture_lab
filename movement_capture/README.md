@@ -13,7 +13,7 @@ The package must NOT:
 2. contain user text the host cannot replace. The host passes `MovementCaptureStrings` (English defaults built in).
 3. hardcode colours or icons. It inherits the host `Theme`; pass `MovementCaptureStyle` / `MovementCaptureIcons` to override.
 4. persist anything. It only uses `<cache>/movement_capture/` and exposes `MovementCapture.purgeAll()`.
-5. decide consent, login or navigation. `open` returns `String? analysisId`; the host decides what happens next.
+5. decide consent, login or navigation. `open` returns a `MovementCaptureResult`; the host decides what happens next.
 
 ## Install
 
@@ -43,12 +43,25 @@ consent **before** calling `open`.
 ## Use
 
 ```dart
-final analysisId = await MovementCapture.open(
-  context,
-  config: MovementCaptureConfig(metadata: {'chatSessionId': id}),
-  uploader: MyUploader(),
-);
+final report = await MovementCapture.checkSupport(); // never throws
+if (report.canRun) {
+  final result = await MovementCapture.open(
+    context,
+    config: MovementCaptureConfig(metadata: {'chatSessionId': id}),
+    uploader: MyUploader(),
+  );
+  // result.status: completed | cancelled | unsupported
+  // result.analysisId: first analysis id, or null
+}
 ```
+
+`open` runs the same check itself and returns `unsupported` without opening
+the camera on a blocking problem. Blocking problems: wrong platform, old OS,
+camera permission not declared (Android manifest / iOS `NSCameraUsageDescription`),
+restricted camera access, no camera, ML Kit unavailable (for example Apple
+Silicon simulators). Fixable: denied camera access (the screen offers **Open
+Settings**), low storage. The capture screen keeps the display awake and
+restores the previous setting on close.
 
 Call `MovementCapture.purgeAll()` on logout and before login (never while a
 capture screen is open).
@@ -81,24 +94,24 @@ checks). `clip.deviceFields` gives them as multipart strings.
 
 ## MovementCaptureConfig fields (defaults)
 
-| Field | Default |
-|---|---|
-| maxDuration | 30 s (clamped 5-30 s) |
-| countdown | 3 s |
-| stableBeforeStart | 1500 ms |
-| violationGrace | 400 ms |
-| maxRestarts | 3 |
-| resolution | ResolutionPreset.high |
-| preferredCameraId | null |
-| cameraRotationDegrees | 0 (USB camera only; tablet cameras derive it) |
+| Field                                                          | Default                                                                      |
+|----------------------------------------------------------------|------------------------------------------------------------------------------|
+| maxDuration                                                    | 30 s (clamped 5-30 s)                                                        |
+| countdown                                                      | 3 s                                                                          |
+| stableBeforeStart                                              | 1500 ms                                                                      |
+| violationGrace                                                 | 400 ms                                                                       |
+| maxRestarts                                                    | 3                                                                            |
+| resolution                                                     | ResolutionPreset.high                                                        |
+| preferredCameraId                                              | null                                                                         |
+| cameraRotationDegrees                                          | 0 (USB camera only; tablet cameras derive it)                                |
 | mirrorExternalPreview / mirrorFrontPreview / mirrorBackPreview | null (platform default: USB on; front on for Android, off for iOS; back off) |
-| orientation | auto (tablets landscape, phones portrait) |
-| allowRecordingWithoutLiveChecks | true |
-| safeZoneInset | 0.075 |
-| minLandmarkLikelihood | 0.5 |
-| minMeanLuma / maxMeanLuma | 60 / 200 |
-| maxClippedFraction | 0.25 |
-| minCenterToBorderLuma | 0.6 |
-| analysisInterval | 150 ms |
-| metadata | {} |
-| restoreOrientations | [] (system default) |
+| orientation                                                    | auto (tablets landscape, phones portrait)                                    |
+| allowRecordingWithoutLiveChecks                                | true                                                                         |
+| safeZoneInset                                                  | 0.075                                                                        |
+| minLandmarkLikelihood                                          | 0.5                                                                          |
+| minMeanLuma / maxMeanLuma                                      | 60 / 200                                                                     |
+| maxClippedFraction                                             | 0.25                                                                         |
+| minCenterToBorderLuma                                          | 0.6                                                                          |
+| analysisInterval                                               | 150 ms                                                                       |
+| metadata                                                       | {}                                                                           |
+| restoreOrientations                                            | [] (system default)                                                          |

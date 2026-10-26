@@ -56,6 +56,7 @@ class MovementCaptureStrings {
     this.useAnotherCamera = 'Use another camera',
     this.noLiveChecksNotice =
         'This device cannot check the video while recording. Please stay inside the box until recording ends.',
+    this.openSettings = 'Open Settings',
   });
 
   final String issueMultiplePeople;
@@ -96,6 +97,7 @@ class MovementCaptureStrings {
   final String refreshCameras;
   final String useAnotherCamera;
   final String noLiveChecksNotice;
+  final String openSettings;
 
   String issue(CaptureIssue i) => switch (i) {
         CaptureIssue.multiplePeople => issueMultiplePeople,
