@@ -4,6 +4,16 @@ All notable changes to `movement_capture`. The format follows [Keep a Changelog]
 
 ## [Unreleased]
 
+## [0.9.0] · 2026-10-26
+### Added
+- Review before upload: each recorded clip plays back with the tracked skeleton in sync; "Use this video", "Record again" or "Cancel" (`reviewBeforeUpload`, default on).
+- Retake counting: `CaptureStepResult.retakes`, upload fields `retakes` and `reviewed`.
+- Quit at any time: Cancel on every screen state including camera start-up and uploading; the back gesture always quits; a confirmation appears when unsent work would be lost.
+- Dependency: `video_player`.
+### Changed
+- The camera is released during review and reopened afterwards.
+- The back gesture now works while uploads run (it used to be ignored). Stopping cancels the uploads and deletes their files.
+
 ## [0.8.0] · 2026-10-26
 ### Added
 - Hands step: MediaPipe Hand Landmarker (21 points per hand, up to 2 hands) on Android and iOS, with the hand skeleton on screen.

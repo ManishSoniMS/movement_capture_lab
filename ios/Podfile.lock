@@ -88,6 +88,9 @@ PODS:
   - nanopb/decode (3.30910.0)
   - nanopb/encode (3.30910.0)
   - PromisesObjC (2.4.1)
+  - video_player_avfoundation (0.0.1):
+    - Flutter
+    - FlutterMacOS
 
 DEPENDENCIES:
   - camera_avfoundation (from `.symlinks/plugins/camera_avfoundation/darwin`)
@@ -97,6 +100,7 @@ DEPENDENCIES:
   - google_mlkit_face_detection (from `.symlinks/plugins/google_mlkit_face_detection/ios`)
   - google_mlkit_pose_detection (from `.symlinks/plugins/google_mlkit_pose_detection/ios`)
   - movement_capture (from `.symlinks/plugins/movement_capture/ios`)
+  - video_player_avfoundation (from `.symlinks/plugins/video_player_avfoundation/darwin`)
 
 SPEC REPOS:
   trunk:
@@ -133,6 +137,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/google_mlkit_pose_detection/ios"
   movement_capture:
     :path: ".symlinks/plugins/movement_capture/ios"
+  video_player_avfoundation:
+    :path: ".symlinks/plugins/video_player_avfoundation/darwin"
 
 SPEC CHECKSUMS:
   camera_avfoundation: 968a9a5323c79a99c166ad9d7866bfd2047b5a9b
@@ -159,6 +165,7 @@ SPEC CHECKSUMS:
   movement_capture: 743f665f110ded011c87fdf105bfbf8364c57190
   nanopb: fad817b59e0457d11a5dfbde799381cd727c1275
   PromisesObjC: 752c3227f599e3467650e47ea36f433eeb10c273
+  video_player_avfoundation: bc5f800d1e1c4f389bc5d51778a4f89dd1bf4a77
 
 PODFILE CHECKSUM: 9580a49fa2c095d51100c20f258df867100b916b
 

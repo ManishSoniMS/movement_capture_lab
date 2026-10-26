@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movement_capture/movement_capture.dart';
 import 'package:movement_capture/src/domain/capture_state.dart';
@@ -119,5 +121,17 @@ void main() {
     final cam = snap(const CameraUnavailable(CameraFailure.noCamera));
     expect(p.next(cam, at(200)), strings.cameraNone);
     expect(p.next(cam, at(300)), isNull);
+  });
+
+  test('review is announced once per review', () {
+    final p = SpeechPlanner(strings: strings, mode: CaptureMode.selfGuided);
+    final review = Reviewing(
+      video: File('x.mp4'),
+      samples: const [],
+      cameraKind: CameraKind.front,
+      fileMirrored: false,
+    );
+    expect(p.next(snap(review), at(0)), strings.voiceReview);
+    expect(p.next(snap(review), at(500)), isNull);
   });
 }

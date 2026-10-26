@@ -18,6 +18,7 @@ class CaptureStepResult {
     required this.step,
     this.analysisId,
     this.skipped = false,
+    this.retakes = 0,
   });
 
   final CaptureStep step;
@@ -25,6 +26,9 @@ class CaptureStepResult {
   /// Server analysis ID, or null if the step was skipped or not finished.
   final String? analysisId;
   final bool skipped;
+
+  /// How many times "Record again" was chosen for this step.
+  final int retakes;
 }
 
 class MovementCaptureResult {

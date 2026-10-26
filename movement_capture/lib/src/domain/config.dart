@@ -40,6 +40,7 @@ class MovementCaptureConfig {
     this.voiceInAssisted = false,
     this.voiceIssueRepeat = const Duration(seconds: 6),
     this.allowRecordingWithoutLiveChecks = true,
+    this.reviewBeforeUpload = true,
     this.showSkeleton = true,
     this.skeletonMinLikelihood = 0.2,
     this.safeZoneInset = 0.075,
@@ -131,6 +132,9 @@ class MovementCaptureConfig {
   /// checks and report liveChecks=false; false = show the error instead.
   final bool allowRecordingWithoutLiveChecks;
 
+  /// Show each recorded clip for approval (Use / Record again) before upload.
+  final bool reviewBeforeUpload;
+
   /// Draw the tracked skeleton on the preview (independent of the debug
   /// overlay).
   final bool showSkeleton;
@@ -206,6 +210,18 @@ class MovementCaptureConfig {
   /// on iOS both are mirrored together.
   bool overlayFlipFor(CameraKind kind, TargetPlatform platform) =>
       platform == TargetPlatform.android && kind == CameraKind.front;
+
+  /// Review playback should look like the live preview did. The live preview
+  /// was mirrored if the system mirrored it (front cameras) XOR the extra
+  /// display flip was on. The file itself is mirrored only on the iOS front
+  /// camera.
+  bool reviewMirrorFor(CameraKind kind, TargetPlatform platform) {
+    final shownMirrored =
+        mirrorPreviewFor(kind, platform) != (kind == CameraKind.front);
+    final fileMirrored =
+        platform == TargetPlatform.iOS && kind == CameraKind.front;
+    return shownMirrored != fileMirrored;
+  }
 
   List<DeviceOrientation> orientationsFor(double shortestSide) {
     const landscape = [

@@ -146,7 +146,8 @@ final result = await MovementCapture.open(
 switch (result.status) {
   case MovementCaptureStatus.completed:
     for (final step in result.steps) {
-      // step.step, step.analysisId (null if skipped), step.skipped
+      // step.step, step.analysisId (null if skipped), step.skipped,
+      // step.retakes ("Record again" count)
     }
   case MovementCaptureStatus.cancelled:   // left early; uploaded steps keep their IDs
     break;
@@ -240,8 +241,11 @@ A session records the steps in `config.steps` (default: full body, face, hands, 
 1. The banner shows **"Step 2 of 4 · Face"** and the instruction.
 2. The helper (or user) taps **Start**. The library waits until every check has passed for 1.5 s, counts down, and records.
 3. If a check fails for more than 0.4 s while recording, the clip is deleted and recording restarts automatically. After 3 restarts it asks for help.
-4. The finished clip is **uploaded in the background** while the next step is filmed.
-5. After the last step, a short "Sending videos…" screen waits for any uploads still running.
+4. The clip plays back with the tracked skeleton. Choose **Use this video** or **Record again**.
+5. An approved clip is **uploaded in the background** while the next step is filmed.
+6. After the last step, a short "Sending videos…" screen waits for any uploads still running.
+
+Cancel is available on every screen, and so is the system back gesture. If a recording, a clip under review, or unsent uploads would be lost, the user is asked to confirm.
 
 | Step       | Live checks                                             | Tracking data                                                                        |
 |------------|---------------------------------------------------------|--------------------------------------------------------------------------------------|
@@ -271,6 +275,8 @@ Your `MovementUploader.upload` is called **once per recorded step**, one at a ti
 | `cameraKind`              | `external` / `front` / `back`          |                                                                       |
 | `fileMirrored`            | `true` / `false`                       | `true` for the iOS front camera: **the video is mirrored**            |
 | `liveChecks`              | `true` / `false`                       | `false` = this device couldn't check while recording; treat with care |
+| `retakes`                 | `0`                                    | How many times "Record again" was chosen for this step               |
+| `reviewed`                | `true` / `false`                       | Whether the clip was approved on screen                               |
 
 Files: `clip.file` (MP4, H.264, **no audio**) and, for full body and face, `clip.landmarksFile` (`landmarks.json`, format in [ARCHITECTURE.md](ARCHITECTURE.md#landmarksjson-format-version-1)).
 
@@ -348,6 +354,7 @@ All fields of `MovementCaptureConfig` (all optional):
 | `mirrorExternalPreview` / `mirrorFrontPreview` / `mirrorBackPreview` | `null` → USB on, front off, back off | Extra display-only mirroring (front cameras are already mirrored by the system)                             |
 | `orientation`                                                        | `auto`                          | `auto` (tablets landscape, phones portrait), `landscape`, `portrait`                                             |
 | `allowRecordingWithoutLiveChecks`                                    | `true`                          | If the device can't check while recording: record anyway and report `liveChecks=false` (`false` = show an error) |
+| `reviewBeforeUpload`                                                 | `true`                          | Show each clip for approval before upload                                                                        |
 | `showSkeleton`                                                       | `true`                          | Draw the tracked skeleton                                                                                        |
 | `skeletonMinLikelihood`                                              | 0.2                             | Points below this are hidden; up to 0.7 they are drawn faded                                                     |
 | `safeZoneInset`                                                      | 0.075                           | Box margin at each edge (wide-angle lens distortion)                                                             |

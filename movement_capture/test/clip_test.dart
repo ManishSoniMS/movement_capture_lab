@@ -33,6 +33,8 @@ void main() {
       'step': 'face',
       'stepIndex': '1',
       'stepCount': '4',
+      'retakes': '0',
+      'reviewed': 'false',
     });
   });
 
@@ -43,6 +45,28 @@ void main() {
     }).formFields;
     expect(fields['chatSessionId'], 'chat-1');
     expect(fields['step'], 'face');
+  });
+
+  test('retakes and reviewed are sent when set', () {
+    final clip = MovementClip(
+      file: File('x.mp4'),
+      duration: const Duration(seconds: 5),
+      resolution: ResolutionPreset.high,
+      capturedAtUtc: DateTime.utc(2026),
+      metadata: const {},
+      platform: 'ios',
+      cameraKind: 'front',
+      fileMirrored: false,
+      liveChecks: true,
+      sessionId: 'abc123',
+      step: CaptureStep.face,
+      stepIndex: 1,
+      stepCount: 4,
+      retakes: 2,
+      reviewed: true,
+    );
+    expect(clip.formFields['retakes'], '2');
+    expect(clip.formFields['reviewed'], 'true');
   });
 
   test('landmarksFile is optional', () {

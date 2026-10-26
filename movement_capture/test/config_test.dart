@@ -181,4 +181,23 @@ void main() {
     expect(strings.issue(CaptureIssue.oneHand), contains('one hand'));
     expect(icons.issue(CaptureIssue.noHands), isNot(icons.issue(CaptureIssue.oneHand)));
   });
+
+  test('review mirroring matches what the live preview showed', () {
+    final c = MovementCaptureConfig();
+    // Android front: preview shown mirrored, file not, so flip the playback.
+    expect(c.reviewMirrorFor(CameraKind.front, TargetPlatform.android), isTrue);
+    // iOS front: preview and file both mirrored, so no flip.
+    expect(c.reviewMirrorFor(CameraKind.front, TargetPlatform.iOS), isFalse);
+    // USB: mirror view on, file not mirrored, so flip.
+    expect(
+        c.reviewMirrorFor(CameraKind.external, TargetPlatform.android), isTrue);
+    // Back: nothing mirrored.
+    expect(c.reviewMirrorFor(CameraKind.back, TargetPlatform.iOS), isFalse);
+  });
+
+  test('review before upload is on by default', () {
+    expect(MovementCaptureConfig().reviewBeforeUpload, isTrue);
+    expect(MovementCaptureConfig(reviewBeforeUpload: false).reviewBeforeUpload,
+        isFalse);
+  });
 }

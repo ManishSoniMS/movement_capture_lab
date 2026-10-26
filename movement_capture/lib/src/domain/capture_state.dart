@@ -1,4 +1,8 @@
+import 'dart:io';
+
+import 'camera_choice.dart';
 import 'capture_issue.dart';
+import 'review_samples.dart';
 
 sealed class CaptureState {
   const CaptureState();
@@ -53,6 +57,22 @@ final class Recording extends CaptureState {
     final p = elapsed.inMilliseconds / total.inMilliseconds;
     return p < 0 ? 0 : (p > 1 ? 1 : p);
   }
+}
+
+/// A step was recorded; the clip is shown for approval. The camera is off.
+final class Reviewing extends CaptureState {
+  const Reviewing({
+    required this.video,
+    required this.samples,
+    required this.cameraKind,
+    required this.fileMirrored,
+  });
+  final File video;
+
+  /// Skeleton samples taken while recording (may be empty).
+  final List<TimedOverlay> samples;
+  final CameraKind cameraKind;
+  final bool fileMirrored;
 }
 
 /// Too many automatic restarts in the current step.

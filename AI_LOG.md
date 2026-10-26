@@ -103,3 +103,15 @@
 **Checks:** red phase was a compile failure (missing types). 127 package tests pass, package analyze clean, root analyze only the 3 known infos. `flutter build apk --debug` and `flutter build ios --debug --no-codesign` both succeed with ML Kit and MediaPipe together (after `pod install --repo-update` in `ios/`).
 
 **Not verified:** V72 to V76 need devices (skeleton quality, hand checks, fallback, left/right `side`, release size). Release builds were not made, so the size change is unmeasured. Tags `movement_capture-v0.7.0`, `v0.7.1` and `v0.8.0` are not created.
+
+## 2026-10-26: Review before upload, retake, quit at any time (PROMPT.md, Revision 12)
+
+**Files:** package `domain/review_samples.dart` (new: `TimedOverlay`, `overlayAt`), `domain/capture_state.dart` (`Reviewing`), `config.dart` (`reviewBeforeUpload`, `reviewMirrorFor`), `result.dart` (`CaptureStepResult.retakes`), `uploader.dart` (`retakes`, `reviewed` form fields); `presentation/controller.dart` (`acceptReview`, `retakeStep`, `hasUnsavedWork`, pending clip, review samples), `step_uploads.dart` (`hasUnfinished`), `speech_planner.dart`, `customization.dart`, `screen.dart` (quit confirmation, Cancel on every state, `onDone`), `review_view.dart` (new); `pubspec.yaml` 0.9.0 + `video_player`. Lab: review switch, retakes in the results log, `_r<n>` in inspection file names. Tests: new `review_samples_test.dart`; added cases in `config_test.dart`, `clip_test.dart`, `speech_planner_test.dart`, `step_uploads_test.dart`. Docs: CHANGELOG 0.9.0, DECISIONS D-030 and D-031 (D-020 note), README, ARCHITECTURE.
+
+**Why this approach:** the prompt's `analysis/`, `upload/` and `_jobs` map onto this repo as `domain/` and `StepUploads`. The controller keeps the recorded clip in `_pendingClip` until the user chooses, and only then hands it to `StepUploads`, so a rejected clip never reaches the uploader. `hasUnsavedWork` asks `StepUploads.hasUnfinished`. `review_samples.dart` is in `domain/` because it is pure Dart.
+
+**Pros/cons:** a bad clip can be rejected before it is sent; retakes are reported. Each step takes a few seconds longer and the camera reopens after review (about 1 s). The back gesture used to be ignored during uploads; it now quits (after a confirmation) and cancels them.
+
+**Checks:** red phase was a compile failure (missing types and fields). Package tests, package analyze and root analyze (3 known infos) results are in the commit run.
+
+**Not verified:** `ReviewView` and the controller's review flow need a device (V77 to V83): playback, skeleton sync, mirroring, backgrounding, quit in each state. Tags `v0.7.0`, `v0.7.1`, `v0.8.0` and `v0.9.0` are not created.

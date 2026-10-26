@@ -96,6 +96,23 @@ class MovementCaptureStrings {
     this.voiceGood = 'Good. Stay there.',
     this.voiceStepDone = 'Done.',
     this.voiceFinishing = 'Sending the videos. Please wait.',
+    this.reviewTitle = 'Check the video',
+    this.reviewHint =
+        'Check that the video is clear and everything is in view.',
+    this.selfReviewHint =
+        'Watch your video. If it looks clear, tap Use this video. Otherwise tap Record again.',
+    this.reviewUnavailable =
+        'The video can\'t be shown here, but it was recorded.',
+    this.useVideo = 'Use this video',
+    this.recordAgain = 'Record again',
+    this.play = 'Play',
+    this.pause = 'Pause',
+    this.voiceReview =
+        'Recording finished. Check the video, then tap Use this video or Record again.',
+    this.quitTitle = 'Stop now?',
+    this.quitMessage = 'Videos that have not been sent yet will be deleted.',
+    this.quitConfirm = 'Stop',
+    this.quitKeepGoing = 'Keep going',
     this.mute = 'Mute voice',
     this.unmute = 'Turn voice on',
   });
@@ -165,6 +182,19 @@ class MovementCaptureStrings {
   final String voiceGood;
   final String voiceStepDone;
   final String voiceFinishing;
+  final String reviewTitle;
+  final String reviewHint;
+  final String selfReviewHint;
+  final String reviewUnavailable;
+  final String useVideo;
+  final String recordAgain;
+  final String play;
+  final String pause;
+  final String voiceReview;
+  final String quitTitle;
+  final String quitMessage;
+  final String quitConfirm;
+  final String quitKeepGoing;
   final String mute;
   final String unmute;
 
@@ -190,6 +220,9 @@ class MovementCaptureStrings {
               CaptureStep.hands => selfStepInstructionHands,
               CaptureStep.feet => selfStepInstructionFeet,
             };
+
+  String reviewHintFor(CaptureMode mode) =>
+      mode == CaptureMode.assisted ? reviewHint : selfReviewHint;
 
   String hintArmedFor(CaptureMode mode) =>
       mode == CaptureMode.assisted ? hintArmed : selfHintArmed;
@@ -287,6 +320,10 @@ class MovementCaptureIcons {
     this.saved = Icons.check,
     this.voiceOn = Icons.volume_up,
     this.voiceOff = Icons.volume_off,
+    this.recordAgain = Icons.replay,
+    this.useVideo = Icons.check,
+    this.play = Icons.play_arrow,
+    this.pause = Icons.pause,
   });
 
   final IconData multiplePeople;
@@ -318,6 +355,10 @@ class MovementCaptureIcons {
   final IconData saved;
   final IconData voiceOn;
   final IconData voiceOff;
+  final IconData recordAgain;
+  final IconData useVideo;
+  final IconData play;
+  final IconData pause;
 
   IconData issue(CaptureIssue i) => switch (i) {
         CaptureIssue.multiplePeople => multiplePeople,

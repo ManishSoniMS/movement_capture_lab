@@ -43,6 +43,10 @@ class StepUploads {
   bool get hasPending => _jobs.values.any((j) =>
       j.status == UploadStatus.queued || j.status == UploadStatus.uploading);
 
+  /// True while any queued step is not yet uploaded (queued, running or
+  /// failed). Quitting now would lose it.
+  bool get hasUnfinished => _jobs.values.any((j) => j.status != UploadStatus.done);
+
   int get failedCount =>
       _jobs.values.where((j) => j.status == UploadStatus.failed).length;
 

@@ -74,7 +74,8 @@ class _HomePageState extends State<HomePage> {
     if (!mounted) return;
     final ids = result.steps
         .map((s) =>
-            '${s.step.name}=${s.skipped ? 'skipped' : (s.analysisId ?? '—')}')
+            '${s.step.name}=${s.skipped ? 'skipped' : (s.analysisId ?? '—')}'
+            '${s.retakes > 0 ? ' (retakes ${s.retakes})' : ''}')
         .join(', ');
     setState(() {
       _support = result.support;
@@ -214,6 +215,11 @@ class _HomePageState extends State<HomePage> {
             ),
           _slider('Face / hands / feet duration (s)', _s.closeUpDurationS, 5,
               30, 25, _int, (v) => _s.closeUpDurationS = v),
+          SwitchListTile(
+            title: const Text('Review each clip before upload'),
+            value: _s.reviewBeforeUpload,
+            onChanged: (v) => setState(() => _s.reviewBeforeUpload = v),
+          ),
           SwitchListTile(
             title: const Text('Switch to back camera for the feet step'),
             value: _s.feetUseBackCamera,

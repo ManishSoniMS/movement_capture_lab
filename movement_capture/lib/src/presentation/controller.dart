@@ -21,6 +21,7 @@ import '../domain/landmark_track.dart';
 import '../domain/pose_topology.dart';
 import '../domain/quality_timer.dart';
 import '../domain/result.dart';
+import '../domain/review_samples.dart';
 import '../domain/uploader.dart';
 import 'serial_queue.dart';
 import 'step_uploads.dart';
@@ -121,8 +122,18 @@ class MovementCaptureController extends ChangeNotifier {
             step: s,
             analysisId: _uploads.analysisIdFor(s),
             skipped: _skipped.contains(s),
+            retakes: _retakes[s] ?? 0,
           ),
       ];
+
+  /// True if quitting now would throw away a recording, a clip under review,
+  /// or uploads that haven't finished.
+  bool get hasUnsavedWork {
+    final s = _state;
+    if (s is CountingDown || s is Recording || s is Reviewing) return true;
+    if (s is Finishing || s is FinishFailed) return true;
+    return _uploads.hasUnfinished;
+  }
 
   static bool get _isIOS => defaultTargetPlatform == TargetPlatform.iOS;
 
@@ -173,6 +184,10 @@ class MovementCaptureController extends ChangeNotifier {
   Duration _recordedDuration = Duration.zero;
   DateTime? _capturedAtUtc;
   LandmarkTrack? _track;
+
+  MovementClip? _pendingClip; // recorded, waiting for review
+  final Map<CaptureStep, int> _retakes = {};
+  final List<TimedOverlay> _reviewSamples = [];
 
   static const Set<String> _permissionCodes = {
     'CameraAccessDenied',
@@ -260,6 +275,29 @@ class MovementCaptureController extends ChangeNotifier {
         _newPhase();
         _cancelAllTimers();
         await _advanceImpl(saved: false);
+      });
+
+  /// Review: "Use this video".
+  Future<void> acceptReview() => _serial(() async {
+        if (_disposed || _state is! Reviewing) return;
+        final clip = _pendingClip;
+        _pendingClip = null;
+        _reviewSamples.clear();
+        if (clip == null) return;
+        _uploads.enqueue(clip);
+        await _advanceImpl(saved: true); // reopens the camera if needed
+      });
+
+  /// Review: "Record again".
+  Future<void> retakeStep() => _serial(() async {
+        if (_disposed || _state is! Reviewing) return;
+        final clip = _pendingClip;
+        _pendingClip = null;
+        _reviewSamples.clear();
+        if (clip != null) await _deleteClipFiles(clip);
+        _retakes[currentStep] = (_retakes[currentStep] ?? 0) + 1;
+        _restarts = 0;
+        await _startImpl(); // same step, same camera, waiting for Start
       });
 
   /// Operator tapped "Try again" on the NeedsOperator panel.
@@ -544,6 +582,7 @@ class MovementCaptureController extends ChangeNotifier {
       _track = _liveChecks && currentStep.recordsLandmarks
           ? LandmarkTrack(sessionId: sessionId, step: currentStep)
           : null;
+      _reviewSamples.clear();
       final total = config.durationFor(currentStep);
       _recordClock
         ..reset()
@@ -590,6 +629,7 @@ class MovementCaptureController extends ChangeNotifier {
     try {
       _stopRecordingTimers();
       _track = null;
+      _reviewSamples.clear();
       final raw = await cam.stopVideoRecording();
       await _storage.deletePath(raw.path);
       _restarts++;
@@ -651,7 +691,7 @@ class MovementCaptureController extends ChangeNotifier {
     if (_disposed) return; // teardown purges the files
 
     final kind = _selected?.kind ?? CameraKind.external;
-    _uploads.enqueue(MovementClip(
+    final clip = MovementClip(
       file: savedVideo,
       landmarksFile: landmarks,
       duration: _recordedDuration,
@@ -666,8 +706,26 @@ class MovementCaptureController extends ChangeNotifier {
       step: currentStep,
       stepIndex: _stepIndex,
       stepCount: steps.length,
+      retakes: _retakes[currentStep] ?? 0,
+      reviewed: config.reviewBeforeUpload,
+    );
+
+    if (!config.reviewBeforeUpload) {
+      _uploads.enqueue(clip);
+      await _advanceImpl(saved: true);
+      return;
+    }
+
+    _pendingClip = clip;
+    final fileMirrored = _fileMirrored;
+    await _releaseCamera(); // the player needs the memory; reopened after
+    if (_disposed) return; // teardown deletes the pending clip
+    _setState(Reviewing(
+      video: savedVideo,
+      samples: List.unmodifiable(_reviewSamples),
+      cameraKind: kind,
+      fileMirrored: fileMirrored,
     ));
-    await _advanceImpl(saved: true);
   }
 
   /// Moves to the next step, or finishes the session after the last one.
@@ -791,6 +849,10 @@ class MovementCaptureController extends ChangeNotifier {
         if (r.confirmedBad) _cancelCountdown(r.lastIssue!);
       case Recording(liveChecks: true):
         _recordSample(check);
+        if (config.reviewBeforeUpload) {
+          _reviewSamples.add(
+              TimedOverlay(_recordClock.elapsedMilliseconds, check.overlay));
+        }
         if (r.confirmedBad && !_transitionQueued) {
           _transitionQueued = true;
           final issue = r.lastIssue!;
@@ -857,6 +919,7 @@ class MovementCaptureController extends ChangeNotifier {
             'continuing without live checks');
         _liveChecks = false;
         _track = null; // a partial track would mislead the server
+        _reviewSamples.clear();
         _setState(Recording(
           elapsed: s.elapsed,
           total: s.total,
@@ -946,11 +1009,20 @@ class MovementCaptureController extends ChangeNotifier {
     if (!_disposed) notifyListeners(); // preview disappears
   }
 
+  Future<void> _deleteClipFiles(MovementClip clip) async {
+    await _storage.deletePath(clip.file.path);
+    final landmarks = clip.landmarksFile;
+    if (landmarks != null) await _storage.deletePath(landmarks.path);
+  }
+
   Future<void> _teardownImpl() async {
     _newPhase();
     _cancelAllTimers();
     await _stopAndDeleteActiveRecording();
     await _releaseCamera();
+    final pending = _pendingClip;
+    _pendingClip = null;
+    if (pending != null) await _deleteClipFiles(pending);
     _uploads.cancelAll();
     await _uploads.deleteAllFiles();
     await _storage.purgeAll();

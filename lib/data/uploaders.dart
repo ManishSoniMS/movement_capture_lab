@@ -60,7 +60,8 @@ class InspectionUploader implements MovementUploader {
         '_${clip.stepIndex + 1}-${clip.step.name}'
         '_${clip.platform}_${clip.cameraKind}'
         '_mirrored-${clip.fileMirrored}_checks-${clip.liveChecks}'
-        '_${clip.duration.inMilliseconds}ms';
+        '_${clip.duration.inMilliseconds}ms'
+        '_r${clip.retakes}';
     onProgress(0.3);
     await clip.file.copy('${dir.path}/$base.mp4');
     if (clip.landmarksFile != null) {

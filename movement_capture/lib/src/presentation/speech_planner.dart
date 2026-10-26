@@ -84,6 +84,9 @@ class SpeechPlanner {
             () => liveChecks
                 ? strings.voiceRecording
                 : strings.noLiveChecksNotice);
+      case Reviewing():
+        _clearIssue();
+        return _once('review:${s.stepIndex}', () => strings.voiceReview);
       case NeedsOperator():
         _clearIssue();
         return _once(

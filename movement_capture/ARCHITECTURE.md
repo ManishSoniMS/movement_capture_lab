@@ -33,7 +33,8 @@ lib/
     domain/                      rules and interfaces; no ML Kit, no files, no widgets
       config.dart                   MovementCaptureConfig, CaptureMode, CaptureOrientation
       capture_step.dart             CaptureStep (fullBody, face, hands, feet)
-      capture_state.dart            sealed CaptureState
+      capture_state.dart            sealed CaptureState (incl. Reviewing)
+      review_samples.dart           TimedOverlay, overlayAt (skeleton in time with the review video)
       capture_issue.dart            the checks that can fail
       frame_metrics.dart            FrameMetrics, FrameCheck
       frame_analyzer.dart           FrameAnalyzer interface
@@ -69,7 +70,7 @@ android/ ios/                    native plugin: support info, settings, keep scr
 test/                            unit tests for domain, data and presentation logic
 ```
 
-Pure-Dart parts (unit-tested without a device): `luma_stats`, `quality_timer`, `pose_topology`, `landmark_track`, `camera_choice`, `support_report`, `serial_queue`, `step_uploads`, `speech_planner`, `config`. Camera and ML Kit cannot run under `flutter test`, so the controller's camera flows and `VoiceGuide` are verified on a device.
+Pure-Dart parts (unit-tested without a device): `luma_stats`, `quality_timer`, `pose_topology`, `landmark_track`, `camera_choice`, `support_report`, `serial_queue`, `step_uploads`, `speech_planner`, `config`, `review_samples`. Camera and ML Kit cannot run under `flutter test`, so the controller's camera flows and `VoiceGuide` are verified on a device.
 
 ## 3. Session state machine
 
@@ -85,14 +86,19 @@ stateDiagram-v2
   Recording --> Checking: problem ≥ 0.4 s (clip deleted, restart)
   Recording --> NeedsOperator: more than maxRestarts
   NeedsOperator --> Checking: Try again
-  Recording --> Checking: step saved → next step
+  Recording --> Reviewing: step recorded (reviewBeforeUpload)
+  Reviewing --> Checking: Use this video → next step / Record again → same step
+  Reviewing --> Finishing: Use this video on the last step
+  Recording --> Checking: step saved → next step (review off)
   Checking --> Checking: Skip step → next step
-  Recording --> Finishing: last step saved
+  Recording --> Finishing: last step saved (review off)
   Finishing --> SessionComplete: all uploads done
   Finishing --> FinishFailed: an upload failed
   FinishFailed --> Finishing: Retry
   CameraUnavailable --> Initializing: Retry / camera chosen / back from Settings
 ```
+
+Any state → closed: Cancel / back (a confirmation appears when `hasUnsavedWork`). During `Reviewing` the camera is released and reopens on Use or Record again.
 
 `Checking` carries `armed` (Start pressed?), `issue` (problem shown) and `interrupted` (a recording was just stopped). The current step, step index and last saved step live on the controller.
 
@@ -128,7 +134,8 @@ camera frame (Android NV21 / iOS BGRA, ~30 fps)
       └─ FrameCheck: issues, overlay points, pose points, face snapshot
           ├─ QualityTimer: confirm after 0.4 s bad / 1.5 s good
           ├─ overlay → SkeletonLayer (glides between samples)
-          └─ while recording: LandmarkTrack sample (t ms)
+          ├─ while recording: LandmarkTrack sample (t ms)
+          └─ while recording (review on): TimedOverlay kept in memory for the review, then discarded
 ```
 
 **Rotation for ML Kit** must match the preview on screen.
@@ -153,6 +160,7 @@ camera frame (Android NV21 / iOS BGRA, ~30 fps)
 |------------------------|----------------------------------------|---------------------------------------------------------------------------|
 | Plugin's raw recording | Camera plugin, while recording         | Moved into `movement_capture/` on finish, or deleted on restart / failure |
 | `capture_*.mp4`        | When a step finishes                   | After its upload succeeds; on session cancel / teardown; by `purgeAll()`  |
+| Clip under review      | When a step finishes                   | On Record again, Cancel, or teardown; after upload once accepted          |
 | `landmarks_*.json`     | When a full-body, face or hands step finishes | Same as its video                                                         |
 
 `purgeAll()` deletes our folder, any `.mp4` in the cache root, and the iOS plugin folder. It runs **only** at session start, at teardown, and when the host calls it (logout / login). Running it mid-session would delete clips still waiting to upload.

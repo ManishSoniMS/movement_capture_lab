@@ -16,6 +16,7 @@ import '../domain/voice.dart';
 import 'controller.dart';
 import 'customization.dart';
 import 'debug_overlay.dart';
+import 'review_view.dart';
 import 'skeleton_layer.dart';
 import 'speech_planner.dart';
 import 'voice_guide.dart';
@@ -57,6 +58,7 @@ class _MovementCaptureScreenState extends State<MovementCaptureScreen>
   late final MovementCaptureController _controller;
   VoiceGuide? _voiceGuide;
   bool _closing = false;
+  bool _confirming = false; // the quit dialog is open
 
   @override
   void initState() {
@@ -132,6 +134,40 @@ class _MovementCaptureScreenState extends State<MovementCaptureScreen>
     ));
   }
 
+  /// Every "Cancel" and the back gesture come here.
+  Future<void> _requestClose() async {
+    if (_closing || _confirming) return;
+    if (!_controller.hasUnsavedWork) {
+      _close();
+      return;
+    }
+    _confirming = true;
+    final s = widget.strings;
+    final stop = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(s.quitTitle),
+        content:
+            Text(s.quitMessage, style: Theme.of(context).textTheme.titleMedium),
+        actionsAlignment: MainAxisAlignment.spaceBetween,
+        actions: [
+          OutlinedButton(
+            style: OutlinedButton.styleFrom(minimumSize: const Size(140, 56)),
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(s.quitKeepGoing),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(minimumSize: const Size(140, 56)),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(s.quitConfirm),
+          ),
+        ],
+      ),
+    );
+    _confirming = false;
+    if (stop == true && mounted) _close();
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -155,8 +191,8 @@ class _MovementCaptureScreenState extends State<MovementCaptureScreen>
         return PopScope(
           canPop: false,
           onPopInvokedWithResult: (didPop, _) {
-            if (didPop || _controller.state is Finishing) return;
-            _close(); // back gesture = Cancel, with the results so far
+            if (didPop) return;
+            unawaited(_requestClose()); // back gesture = Cancel, at any time
           },
           child: Scaffold(
             backgroundColor: scheme.scrim,
@@ -166,7 +202,8 @@ class _MovementCaptureScreenState extends State<MovementCaptureScreen>
                 state: state,
                 ui: ui,
                 showDebug: widget.showDebugOverlay,
-                onClose: _close,
+                onClose: () => unawaited(_requestClose()),
+                onDone: _close,
                 voiceGuide: _voiceGuide,
                 onToggleMute: () => setState(() {
                   final g = _voiceGuide;
@@ -293,6 +330,7 @@ class _CaptureBody extends StatelessWidget {
     required this.ui,
     required this.showDebug,
     required this.onClose,
+    required this.onDone,
     required this.voiceGuide,
     required this.onToggleMute,
   });
@@ -302,6 +340,7 @@ class _CaptureBody extends StatelessWidget {
   final _Ui ui;
   final bool showDebug;
   final VoidCallback onClose;
+  final VoidCallback onDone;
   final VoiceGuide? voiceGuide;
   final VoidCallback onToggleMute;
 
@@ -311,6 +350,18 @@ class _CaptureBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (state case final Reviewing review) {
+      return ReviewView(
+        key: ValueKey(review.video.path), // new clip, new player
+        controller: controller,
+        review: review,
+        strings: ui.strings,
+        icons: ui.icons,
+        skeletonColors: ui.skeleton,
+        activeColor: ui.active,
+        onCancel: onClose,
+      );
+    }
     final cam = controller.camera;
     final issue = switch (state) {
       Checking(:final issue) => issue,
@@ -438,7 +489,12 @@ class _CaptureBody extends StatelessWidget {
         ? _PanelAction(s.skipStep, controller.skipStep, icon: ui.icons.skipStep)
         : null;
     return switch (state) {
-      Initializing() => _Panel(ui: ui, busy: true, message: s.starting),
+      Initializing() => _Panel(
+          ui: ui,
+          busy: true,
+          message: s.starting,
+          actions: [_PanelAction(s.cancel, onClose)],
+        ),
       CameraUnavailable(:final reason) => _Panel(
           ui: ui,
           icon: ui.icons.cameraOff,
@@ -478,6 +534,7 @@ class _CaptureBody extends StatelessWidget {
           busy: true,
           progress: progress,
           message: s.uploading((progress * 100).round()),
+          actions: [_PanelAction(s.cancel, onClose)],
         ),
       FinishFailed() => _Panel(
           ui: ui,
@@ -493,7 +550,7 @@ class _CaptureBody extends StatelessWidget {
           ui: ui,
           icon: ui.icons.completed,
           message: s.completed,
-          actions: [_PanelAction(s.done, onClose, primary: true)],
+          actions: [_PanelAction(s.done, onDone, primary: true)],
         ),
       _ => null,
     };

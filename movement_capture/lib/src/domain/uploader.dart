@@ -23,6 +23,8 @@ class MovementClip {
     required this.stepIndex,
     required this.stepCount,
     this.landmarksFile,
+    this.retakes = 0,
+    this.reviewed = false,
   });
 
   final File file;
@@ -56,6 +58,12 @@ class MovementClip {
   /// landmarks.json (fullBody and face steps), or null.
   final File? landmarksFile;
 
+  /// "Record again" count before this clip was accepted.
+  final int retakes;
+
+  /// True when the clip was approved on the review screen.
+  final bool reviewed;
+
   /// Every text field for a multipart form: metadata first, then the
   /// package's fields (which win on a name clash).
   Map<String, String> get formFields => {
@@ -71,6 +79,8 @@ class MovementClip {
         'step': step.name,
         'stepIndex': '$stepIndex',
         'stepCount': '$stepCount',
+        'retakes': '$retakes',
+        'reviewed': '$reviewed',
       };
 }
 

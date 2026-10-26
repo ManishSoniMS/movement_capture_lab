@@ -105,6 +105,21 @@ void main() {
     expect(uploads.analysisIdFor(CaptureStep.hands), isNull);
   });
 
+  test('hasUnfinished is true until every upload is done', () async {
+    expect(uploads.hasUnfinished, isFalse);
+    uploads.enqueue(_clip(CaptureStep.fullBody));
+    await _settle();
+    expect(uploads.hasUnfinished, isTrue);
+    uploader.fail(0);
+    await _settle();
+    expect(uploads.hasUnfinished, isTrue); // failed still counts
+    uploads.retryFailed();
+    await _settle();
+    uploader.succeed(1, 'id');
+    await _settle();
+    expect(uploads.hasUnfinished, isFalse);
+  });
+
   test('a finished upload deletes its video and landmarks files', () async {
     uploads.enqueue(_clip(CaptureStep.fullBody, landmarks: true));
     await _settle();
