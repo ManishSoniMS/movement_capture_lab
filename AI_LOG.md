@@ -115,3 +115,51 @@
 **Checks:** red phase was a compile failure (missing types and fields). Package tests, package analyze and root analyze (3 known infos) results are in the commit run.
 
 **Not verified:** `ReviewView` and the controller's review flow need a device (V77 to V83): playback, skeleton sync, mirroring, backgrounding, quit in each state. Tags `v0.7.0`, `v0.7.1`, `v0.8.0` and `v0.9.0` are not created.
+
+## 2026-10-30: Scan one hand or one foot (docs/prompts/kiosk-02-single-limb.md)
+
+**Files:** package `domain/body_sides.dart` (new: `BodySide`, `SideChoice`, `SideStatus`, `handSideIssue`), `capture_issue.dart` (`showLeftHand`, `showRightHand`), `capture_step.dart` (`hasSides`), `config.dart` (`offerSideChoice`), `result.dart` (`CaptureStepResult.sideChoice`, `statusOf`), `uploader.dart` (`MovementClip.sideChoice`, `sides` form field for one-sided scans only), `frame_analyzer.dart` + `data/mlkit_frame_analyzer.dart` (side/mirror callbacks, hand check via `handSideIssue`), `presentation/controller.dart` (`awaitingSideChoice`, `chooseSides`, `sideChoiceFor`), `side_choice_view.dart` (new: `SideChoiceView`, `SideSummary`), `screen.dart`, `speech_planner.dart`, `voice_guide.dart`, `customization.dart`. Tests: new `body_sides_test.dart`, `side_choice_flow_test.dart`; added cases in `clip_test.dart`; `frame_check_test.dart` issue order updated.
+
+**Why this approach:** the package records hands (and feet) as one clip with both sides in view, not one scan per side, so "skip the right side" is expressed as a `SideChoice` for the step. Handedness already exists (MediaPipe label plus `personSide`), so the wrong-hand prompt reuses it and handles mirrored frames; no new model. The decision is a pure function in `domain/`. The question is a controller flag, not a new `CaptureState`, so no existing exhaustive switch changes.
+
+**Pros/cons:** both stays first, selected and the default; one extra tap per hands/feet step (`offerSideChoice: false` removes it). The feet step has no tracking, so a one-sided foot scan relies on the instruction text only. "Finish with left only" after the first side does not apply: both hands are in the same clip.
+
+**Checks:** red phase was a compile failure (missing types). 156 package tests pass, package analyze clean, root analyze only the 3 known infos.
+
+**Not verified:** needs a device: choice screen on a kiosk tablet, handedness prompt with the real USB camera (mirrored and not), upload with the `sides` field. Backend does not know `sides` yet.
+
+## 2026-10-30: Modern tracking overlay (kiosk-03)
+
+**Files:** `movement_capture/lib/src/domain/{one_euro_filter,overlay_smoother,preview_mapping,tracker_state,tracker_input}.dart`, `presentation/{tracker_guide,tracker_overlay}.dart`, `skeleton_layer.dart` (smoothing), `screen.dart` (overlay host), `customization.dart` (14 tracker strings + `trackerMessage`); tests `tracker_logic_test.dart`, `tracker_overlay_test.dart`.
+
+**What:** Dimmed layer with a segmented guide ring (face oval, open hand, foot; left/right and both), six states (searching, not aligned, aligned, scanning, lost, done) that change colour, motion and text. One Euro smoothing on pose, face boxes and hand points. 300 ms debounce on state drops. Overlay sits outside `CameraPreview`, so tracking updates repaint only it. Reduced motion follows the system setting.
+
+**Why this way:** Pure classes for filter, mapping, state machine and input derivation so they unit-test without a camera. Hints come only from `CaptureIssue`s and the face box, so no hint is shown that the pipeline cannot measure.
+
+**Pros:** no new package or ML model; no logging or storage of frames. **Cons:** `mapImagePointToView` is tested but not yet used at runtime (the skeleton still sits inside the preview, which already maps coordinates); `done` is not triggered by any state; face mesh dots are not drawn (pipeline gives contours only); no perf numbers (no device).
+
+## 2026-10-30: Remove tracking marks, simple capture quality status (kiosk-03-simple-capture-quality)
+
+**Decisions for the team (top):** (1) This task replaces the "modern tracker" entry above: the tracker guide, smoothing, `SkeletonLayer` and review skeleton were deleted, as the brief says. A copy of the tracker files is in the session scratchpad only; none of it was ever committed. (2) `blockOnPoorQuality` defaults to **false**, so the strict flow (poor quality stops the countdown and aborts a recording, with restarts) is now off unless the host turns it on. That changes the default for every host. (3) Kept: the fixed safe-zone box (`_SafeZonePainter`, never moves). Removed: skeleton, face boxes and contours, hand points, tracker ring/oval/hand/foot guide. The detectors still run because their landmarks feed the uploaded landmark track; only the drawing is gone. (4) Thresholds are **unconfirmed** (nothing in the repo states model requirements): `minSharpness` 40, `maxMotion` 10, `faceMaxWidthFraction` 0.7, `bodyMinHeightFraction` 0.55, `bodyMaxHeightFraction` 0.92, `minInFrameShare` 0.9, `minCheckPassShare` 0.8, `minRecordedDuration` 3 s. `allowUseAnyway` default on. (5) The overall result is not added to the upload payload; `QualitySummary.toJson()` exists for when the backend agrees a field.
+
+**Files:** new `domain/{luma_thumb,quality_status,quality_summary}.dart`, `presentation/quality_status_bar.dart`; changed `config.dart`, `frame_metrics.dart`, `capture_state.dart` (`Reviewing.quality`), `data/mlkit_frame_analyzer.dart`, `controller.dart` (`status` notifier, quality samples, gating switch), `screen.dart`, `review_view.dart`, `customization.dart` (strings, icons, `warningColor`); removed `skeleton_layer`, `tracker_*`, `one_euro_filter`, `overlay_smoother`, `preview_mapping`, `review_samples`, `OverlayFrame`, `showSkeleton`, `skeletonMinLikelihood`, skeleton colours. Lab: "Show skeleton" switch became "Block on poor quality". Tests: new `quality_check_test.dart`, `quality_widgets_test.dart`.
+
+**How:** sharpness (Laplacian variance) and movement (mean frame difference) use a 160 px brightness copy built from the Y plane every `qualitySampleInterval` (300 ms); the last values are reused in between. Brightness reuses `LumaStats`; in-frame reuses the existing detector issues; distance uses face width / body height. `VerdictHold` shows a new verdict only after 500 ms. The status bar sits in a Column above the preview, never on it. The after-recording result is time-weighted over the samples and shown in the existing review screen.
+
+**Pros/cons:** no new package or model; no frame or landmark stored or logged (only the previous thumb is held in memory). Detection still runs at the old 15/s rate because the landmark track needs it, so the "2-4 fps" limit applies to the pixel maths, not to ML Kit. The pixel maths run on the UI isolate (small: about 19k pixels at 3/s); not measured against an isolate. The summary only appears when `reviewBeforeUpload` is on and live checks ran. The camera-capability check (resolution/fps at open) and the "record and analyse at the same time" check (Step 6) were **not** done: the package already streams frames while recording and falls back to no live checks; that needs a device.
+
+**Checks:** 186 package tests pass, package analyze clean, root analyze only the 3 known infos. Red phase was a compile failure (missing types).
+
+**Not verified:** everything camera-related: real verdicts in the dark / moving / half out of frame, built-in vs USB camera, CPU and preview frame rate before/after, status bar layout on the kiosk tablet.
+
+## Single scan type picker, show/hide camera details
+
+**Decisions for the team (top):** (1) One scan type per session. The package already accepts a one-step `steps` list and returns one result per step, so no backend change is needed; the upload payload is unchanged. The lab's step checkboxes were replaced by the picker. (2) `showDetails` default is **on** (config value, unconfirmed); the team may want off for patients. (3) New dependency in the lab only: `shared_preferences` (BSD-3, Flutter team). The kiosk repo's own storage is not in this repo, so the lab uses the `SettingsStore` interface with a SharedPreferences implementation; the kiosk app should plug its existing storage in. (4) The "kiosk home page" is not in this repo; the lab home page stands in for it.
+
+**Camera screen inventory.** Always shown: preview, safe-zone box, status area (task 03), main instruction, record/skip/cancel buttons, countdown, recording timer and progress bar, camera-chooser, notices, after-recording result. Details (hidden when off): step counter "Step n of m", debug metrics panel (`DebugMetricsPanel`, also needs `showDebugOverlay`). With details off the step icon and step title stay in the Checking banner. Not clearly either, put in Details: nothing else found. The camera name, rotation, resolution and fps are only in the debug panel.
+
+**Files:** new `domain/scan_selection.dart`, `presentation/scan_type_picker.dart`, lab `domain/settings_store.dart`, `data/prefs_settings_store.dart`; changed `config.dart`, `customization.dart`, `screen.dart`, `movement_capture.dart`, lab `lab_settings.dart`, `home_page.dart`, `pubspec.yaml`. Tests: `scan_type_test.dart` (package), `test/settings_store_test.dart` (lab).
+
+**Pros/cons:** the picker takes the selection from the host, so the host keeps navigation and the side-choice step stays in the package. Tiles are two flexible rows so all four fit without scrolling. Screen-level detail hiding cannot run under `flutter test` (camera); the quality code does not read `showDetails` (source guard).
+
+**Not verified:** all manual kiosk checks (each scan type end to end, hands/feet side choices, toggle persistence after a real restart, uncluttered camera screen).

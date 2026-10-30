@@ -3,7 +3,11 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movement_capture/movement_capture.dart';
 
-MovementClip _clip({Map<String, String> metadata = const {}}) => MovementClip(
+MovementClip _clip({
+  Map<String, String> metadata = const {},
+  SideChoice sideChoice = SideChoice.both,
+}) =>
+    MovementClip(
       file: File('x.mp4'),
       duration: const Duration(seconds: 5),
       resolution: ResolutionPreset.high,
@@ -17,6 +21,7 @@ MovementClip _clip({Map<String, String> metadata = const {}}) => MovementClip(
       step: CaptureStep.face,
       stepIndex: 1,
       stepCount: 4,
+      sideChoice: sideChoice,
     );
 
 void main() {
@@ -71,5 +76,12 @@ void main() {
 
   test('landmarksFile is optional', () {
     expect(_clip().landmarksFile, isNull);
+  });
+
+  test('sides is sent for one-sided scans only', () {
+    expect(_clip().formFields.containsKey('sides'), isFalse);
+    expect(_clip(sideChoice: SideChoice.leftOnly).formFields['sides'], 'left');
+    expect(
+        _clip(sideChoice: SideChoice.rightOnly).formFields['sides'], 'right');
   });
 }

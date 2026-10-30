@@ -1,7 +1,3 @@
-import 'dart:ui' show Offset, Rect, lerpDouble;
-
-import 'hand_topology.dart';
-
 /// The 33 ML Kit pose points. Names match `PoseLandmarkType` exactly, so the
 /// data layer maps by name and `domain` stays free of ML Kit.
 enum PoseJoint {
@@ -161,65 +157,4 @@ class PosePoint {
   final double likelihood;
 
   BodyRegion get region => poseRegions[type]!;
-}
-
-/// What the overlay draws for one analysed frame.
-class OverlayFrame {
-  const OverlayFrame({
-    this.pose = const [],
-    this.faces = const [],
-    this.faceContours = const [],
-    this.hands = const [],
-  });
-
-  static const OverlayFrame empty = OverlayFrame();
-
-  /// All detected pose points (up to 33) of the tracked person.
-  final List<PosePoint> pose;
-
-  /// Face boxes, normalised (0–1) in the upright image.
-  final List<Rect> faces;
-
-  /// Face step only: contour polylines, normalised.
-  final List<List<Offset>> faceContours;
-
-  /// Hands step only: tracked hands (21 points each).
-  final List<HandSnapshot> hands;
-
-  /// Positions glide from [a] to [b]. Points new in [b] appear at once.
-  /// Contours are not interpolated (they change shape too often).
-  static OverlayFrame lerp(OverlayFrame? a, OverlayFrame b, double t) {
-    if (a == null || t >= 1) return b;
-    final previous = {for (final p in a.pose) p.type: p};
-    final pose = [
-      for (final p in b.pose)
-        if (previous[p.type] case final from?)
-          PosePoint(
-            type: p.type,
-            x: lerpDouble(from.x, p.x, t)!,
-            y: lerpDouble(from.y, p.y, t)!,
-            likelihood: p.likelihood,
-          )
-        else
-          p,
-    ];
-    final faces = a.faces.length == b.faces.length
-        ? [
-            for (var i = 0; i < b.faces.length; i++)
-              Rect.lerp(a.faces[i], b.faces[i], t)!,
-          ]
-        : b.faces;
-    final hands = a.hands.length == b.hands.length
-        ? [
-            for (var i = 0; i < b.hands.length; i++)
-              HandSnapshot.lerp(a.hands[i], b.hands[i], t),
-          ]
-        : b.hands;
-    return OverlayFrame(
-      pose: pose,
-      faces: faces,
-      faceContours: b.faceContours,
-      hands: hands,
-    );
-  }
 }

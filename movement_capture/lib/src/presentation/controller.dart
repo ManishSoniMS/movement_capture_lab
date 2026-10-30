@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 
 import '../data/file_capture_storage.dart';
 import '../data/mlkit_frame_analyzer.dart';
+import '../domain/body_sides.dart';
 import '../domain/camera_choice.dart';
 import '../domain/capture_issue.dart';
 import '../domain/capture_state.dart';
@@ -18,10 +19,10 @@ import '../domain/config.dart';
 import '../domain/frame_analyzer.dart';
 import '../domain/frame_metrics.dart';
 import '../domain/landmark_track.dart';
-import '../domain/pose_topology.dart';
 import '../domain/quality_timer.dart';
 import '../domain/result.dart';
-import '../domain/review_samples.dart';
+import '../domain/quality_status.dart';
+import '../domain/quality_summary.dart';
 import '../domain/uploader.dart';
 import 'serial_queue.dart';
 import 'step_uploads.dart';
@@ -46,6 +47,7 @@ class MovementCaptureController extends ChangeNotifier {
   })  : _storage = storage,
         _analyzerFactory = analyzerFactory,
         _quality = QualityTimer(grace: config.violationGrace),
+        _statusTracker = QualityStatusTracker(config.qualityHold),
         steps = List.unmodifiable(config.effectiveSteps),
         sessionId = _newSessionId(),
         analysisInterval =
@@ -67,6 +69,7 @@ class MovementCaptureController extends ChangeNotifier {
   final CaptureStorage _storage;
   final FrameAnalyzerFactory _analyzerFactory;
   final QualityTimer _quality;
+  final QualityStatusTracker _statusTracker;
   final SerialQueue _queue = SerialQueue();
   late final StepUploads _uploads;
 
@@ -85,8 +88,9 @@ class MovementCaptureController extends ChangeNotifier {
   /// Latest analysis numbers, for the debug overlay.
   final ValueNotifier<FrameMetrics?> metrics = ValueNotifier(null);
 
-  /// What the skeleton overlay draws. Null = draw nothing.
-  final ValueNotifier<OverlayFrame?> overlay = ValueNotifier(null);
+  /// What the status area shows (in frame? video quality?), held steady for
+  /// `qualityHold`. Null while no frames are being analysed.
+  final ValueNotifier<QualityStatus?> status = ValueNotifier(null);
 
   CaptureState _state = const Initializing();
   CaptureState get state => _state;
@@ -123,8 +127,30 @@ class MovementCaptureController extends ChangeNotifier {
             analysisId: _uploads.analysisIdFor(s),
             skipped: _skipped.contains(s),
             retakes: _retakes[s] ?? 0,
+            sideChoice: sideChoiceFor(s),
           ),
       ];
+
+  final Map<CaptureStep, SideChoice> _sideChoices = {};
+
+  /// Sides chosen for [step]; [SideChoice.both] until the person picks.
+  SideChoice sideChoiceFor(CaptureStep step) =>
+      _sideChoices[step] ?? SideChoice.both;
+
+  /// True while the "which hands / feet?" question is on screen. Start is
+  /// not offered until it is answered.
+  bool get awaitingSideChoice =>
+      config.offerSideChoice &&
+      !_sessionFinished &&
+      currentStep.hasSides &&
+      !_sideChoices.containsKey(currentStep);
+
+  /// Operator or user picked the sides for the current step.
+  void chooseSides(SideChoice choice) {
+    if (_disposed || !awaitingSideChoice) return;
+    _sideChoices[currentStep] = choice;
+    notifyListeners();
+  }
 
   /// True if quitting now would throw away a recording, a clip under review,
   /// or uploads that haven't finished.
@@ -187,7 +213,7 @@ class MovementCaptureController extends ChangeNotifier {
 
   MovementClip? _pendingClip; // recorded, waiting for review
   final Map<CaptureStep, int> _retakes = {};
-  final List<TimedOverlay> _reviewSamples = [];
+  final List<QualitySample> _qualitySamples = [];
 
   static const Set<String> _permissionCodes = {
     'CameraAccessDenied',
@@ -203,7 +229,7 @@ class MovementCaptureController extends ChangeNotifier {
   };
 
   /// The orientation CameraPreview uses to rotate the Android preview.
-  /// Must match it exactly, or the skeleton won't line up.
+  /// Must match it exactly, or the analysed frames are rotated wrongly.
   static DeviceOrientation _previewOrientation(CameraValue v) =>
       v.isRecordingVideo
           ? (v.recordingOrientation ?? v.deviceOrientation)
@@ -259,6 +285,7 @@ class MovementCaptureController extends ChangeNotifier {
 
   /// Operator tapped "Start recording". Touches no camera, so not queued.
   void startRequested() {
+    if (awaitingSideChoice) return;
     final s = _state;
     if (s is Checking && !s.armed) {
       _quality.restartGoodWindow(); // fresh stability window from now
@@ -282,7 +309,7 @@ class MovementCaptureController extends ChangeNotifier {
         if (_disposed || _state is! Reviewing) return;
         final clip = _pendingClip;
         _pendingClip = null;
-        _reviewSamples.clear();
+        _qualitySamples.clear();
         if (clip == null) return;
         _uploads.enqueue(clip);
         await _advanceImpl(saved: true); // reopens the camera if needed
@@ -293,7 +320,7 @@ class MovementCaptureController extends ChangeNotifier {
         if (_disposed || _state is! Reviewing) return;
         final clip = _pendingClip;
         _pendingClip = null;
-        _reviewSamples.clear();
+        _qualitySamples.clear();
         if (clip != null) await _deleteClipFiles(clip);
         _retakes[currentStep] = (_retakes[currentStep] ?? 0) + 1;
         _restarts = 0;
@@ -356,7 +383,7 @@ class MovementCaptureController extends ChangeNotifier {
     _uploads.cancelAll(); // don't make teardown wait for uploads
     unawaited(_serial(_teardownImpl));
     metrics.dispose();
-    overlay.dispose();
+    status.dispose();
     super.dispose();
   }
 
@@ -449,7 +476,9 @@ class MovementCaptureController extends ChangeNotifier {
   FrameAnalyzer _newAnalyzer() => _analyzerFactory(config,
       step: currentStep,
       rotationDegrees: _analysisRotation,
-      interval: analysisInterval);
+      interval: analysisInterval,
+      sideChoice: () => sideChoiceFor(currentStep),
+      framesMirrored: () => _fileMirrored);
 
   /// Throws CameraException on failure; callers handle it.
   Future<void> _open(CameraChoice choice) async {
@@ -582,7 +611,7 @@ class MovementCaptureController extends ChangeNotifier {
       _track = _liveChecks && currentStep.recordsLandmarks
           ? LandmarkTrack(sessionId: sessionId, step: currentStep)
           : null;
-      _reviewSamples.clear();
+      _qualitySamples.clear();
       final total = config.durationFor(currentStep);
       _recordClock
         ..reset()
@@ -629,7 +658,7 @@ class MovementCaptureController extends ChangeNotifier {
     try {
       _stopRecordingTimers();
       _track = null;
-      _reviewSamples.clear();
+      _qualitySamples.clear();
       final raw = await cam.stopVideoRecording();
       await _storage.deletePath(raw.path);
       _restarts++;
@@ -708,6 +737,7 @@ class MovementCaptureController extends ChangeNotifier {
       stepCount: steps.length,
       retakes: _retakes[currentStep] ?? 0,
       reviewed: config.reviewBeforeUpload,
+      sideChoice: sideChoiceFor(currentStep),
     );
 
     if (!config.reviewBeforeUpload) {
@@ -722,7 +752,11 @@ class MovementCaptureController extends ChangeNotifier {
     if (_disposed) return; // teardown deletes the pending clip
     _setState(Reviewing(
       video: savedVideo,
-      samples: List.unmodifiable(_reviewSamples),
+      quality: QualitySummary.from(
+        _qualitySamples,
+        durationMs: _recordClock.elapsedMilliseconds,
+        config: config,
+      ),
       cameraKind: kind,
       fileMirrored: fileMirrored,
     ));
@@ -822,8 +856,14 @@ class MovementCaptureController extends ChangeNotifier {
 
   void _onCheck(FrameCheck check) {
     metrics.value = check.metrics;
-    overlay.value = check.overlay;
-    final r = _quality.feed(check.topIssue, check.at);
+    final reading = check.quality;
+    if (reading != null) {
+      final shown = _statusTracker.feed(reading, check.at);
+      if (shown != status.value) status.value = shown;
+    }
+    // Poor quality only stops the capture when the host asked for that.
+    final r = _quality.feed(
+        config.blockOnPoorQuality ? check.topIssue : null, check.at);
 
     switch (_state) {
       case final Checking s:
@@ -849,9 +889,12 @@ class MovementCaptureController extends ChangeNotifier {
         if (r.confirmedBad) _cancelCountdown(r.lastIssue!);
       case Recording(liveChecks: true):
         _recordSample(check);
-        if (config.reviewBeforeUpload) {
-          _reviewSamples.add(
-              TimedOverlay(_recordClock.elapsedMilliseconds, check.overlay));
+        if (reading != null) {
+          _qualitySamples.add(QualitySample(
+            tMs: _recordClock.elapsedMilliseconds,
+            inFrame: reading.inFrame,
+            problems: reading.problems,
+          ));
         }
         if (r.confirmedBad && !_transitionQueued) {
           _transitionQueued = true;
@@ -919,7 +962,7 @@ class MovementCaptureController extends ChangeNotifier {
             'continuing without live checks');
         _liveChecks = false;
         _track = null; // a partial track would mislead the server
-        _reviewSamples.clear();
+        _qualitySamples.clear();
         _setState(Recording(
           elapsed: s.elapsed,
           total: s.total,
@@ -988,7 +1031,7 @@ class MovementCaptureController extends ChangeNotifier {
   }
 
   Future<void> _releaseCamera() async {
-    if (!_disposed) overlay.value = null;
+    if (!_disposed) _clearStatus();
     _frameWatchdog?.cancel();
     final cam = _camera;
     _camera = null;
@@ -1031,11 +1074,16 @@ class MovementCaptureController extends ChangeNotifier {
   void _setState(CaptureState next) {
     if (_disposed) return;
     _state = next;
-    // The overlay only makes sense while frames are being analysed.
+    // The status only makes sense while frames are being analysed.
     final analysing = next is Checking ||
         next is CountingDown ||
         (next is Recording && next.liveChecks);
-    if (!analysing && overlay.value != null) overlay.value = null;
+    if (!analysing) _clearStatus();
     notifyListeners();
+  }
+
+  void _clearStatus() {
+    _statusTracker.reset();
+    if (status.value != null) status.value = null;
   }
 }

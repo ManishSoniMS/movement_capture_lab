@@ -4,6 +4,14 @@ All notable changes to `movement_capture`. The format follows [Keep a Changelog]
 
 ## [Unreleased]
 
+- `ScanSelection` + `ScanTypePicker`: one scan type at a time, four large tiles (border, check mark and colour), Start off until a tile is chosen, nothing pre-selected. New strings `scanTypeTitle`, `scanTypeStart`, `scanTypeSelected`.
+- `MovementCaptureConfig.showDetails` (default true, unconfirmed): hides the step counter and the debug panel on the camera screen. Quality checks are unaffected.
+- Tracking marks removed: no skeleton, face boxes, contours, hand points or tracker guide on the picture. The fixed safe-zone box stays. Removed `showSkeleton`, `skeletonMinLikelihood` and the skeleton colours in `MovementCaptureStyle`.
+- Status area above the picture: "You are in the frame / not in the frame" and "Video quality: Good / Too dark / Too bright / Move closer / Move back / Blurry / Please hold still". A verdict holds 500 ms (`qualityHold`) before it changes.
+- New checks: sharpness and movement (on a 160 px brightness copy, about 3 per second), distance. Thresholds are config values and unconfirmed (see the README).
+- `blockOnPoorQuality` (default **false**): poor quality no longer stops the countdown or aborts a recording unless this is on.
+- After recording: overall result ("Good for analysis" / "Please record again" with the reason). `allowUseAnyway` (default on). `Reviewing.samples` became `Reviewing.quality`.
+
 ## [0.9.0] · 2026-10-26
 ### Added
 - Review before upload: each recorded clip plays back with the tracked skeleton in sync; "Use this video", "Record again" or "Cancel" (`reviewBeforeUpload`, default on).

@@ -241,7 +241,7 @@ A session records the steps in `config.steps` (default: full body, face, hands, 
 1. The banner shows **"Step 2 of 4 · Face"** and the instruction.
 2. The helper (or user) taps **Start**. The library waits until every check has passed for 1.5 s, counts down, and records.
 3. If a check fails for more than 0.4 s while recording, the clip is deleted and recording restarts automatically. After 3 restarts it asks for help.
-4. The clip plays back with the tracked skeleton. Choose **Use this video** or **Record again**.
+4. The clip plays back with an overall quality result ("Good for analysis" or "Please record again" with the reason). Choose **Continue** (or **Use anyway** when the result failed and `allowUseAnyway` is on) or **Record again**.
 5. An approved clip is **uploaded in the background** while the next step is filmed.
 6. After the last step, a short "Sending videos…" screen waits for any uploads still running.
 

@@ -1,5 +1,6 @@
 import 'package:camera/camera.dart';
 
+import 'body_sides.dart';
 import 'capture_step.dart';
 import 'config.dart';
 import 'frame_metrics.dart';
@@ -26,4 +27,6 @@ typedef FrameAnalyzerFactory = FrameAnalyzer Function(
   required CaptureStep step,
   required int Function() rotationDegrees,
   required Duration interval,
+  SideChoice Function()? sideChoice,
+  bool Function()? framesMirrored,
 });

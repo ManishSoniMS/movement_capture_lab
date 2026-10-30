@@ -37,6 +37,8 @@ class VoiceGuide {
         step: controller.currentStep,
         stepIndex: controller.stepIndex,
         lastSaved: controller.lastSavedStep,
+        awaitingSideChoice: controller.awaitingSideChoice,
+        sideChoice: controller.sideChoiceFor(controller.currentStep),
       ),
       DateTime.now(),
     );

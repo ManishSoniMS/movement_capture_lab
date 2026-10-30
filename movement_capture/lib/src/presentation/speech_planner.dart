@@ -1,3 +1,4 @@
+import '../domain/body_sides.dart';
 import '../domain/capture_issue.dart';
 import '../domain/capture_state.dart';
 import '../domain/capture_step.dart';
@@ -11,11 +12,17 @@ class SpeechSnapshot {
     required this.step,
     required this.stepIndex,
     this.lastSaved,
+    this.awaitingSideChoice = false,
+    this.sideChoice = SideChoice.both,
   });
   final CaptureState state;
   final CaptureStep step;
   final int stepIndex;
   final CaptureStep? lastSaved;
+
+  /// The hands / feet question is on screen.
+  final bool awaitingSideChoice;
+  final SideChoice sideChoice;
 }
 
 /// Decides what to say for each state change. Each event is spoken once;
@@ -45,6 +52,10 @@ class SpeechPlanner {
     switch (state) {
       case Initializing():
         return null;
+      case Checking() when s.awaitingSideChoice:
+        _clearIssue();
+        return _once(
+            'sides:${s.stepIndex}', () => strings.sideChoiceTitle(s.step));
       case Checking(issue: final issue?):
         final repeatDue = _lastIssue == issue &&
             _lastIssueAt != null &&
@@ -56,8 +67,10 @@ class SpeechPlanner {
         return strings.issueFor(issue, mode);
       case Checking(armed: false):
         _clearIssue();
-        return _once('intro:${s.stepIndex}', () {
-          final instruction = strings.stepInstructionFor(s.step, mode);
+        return _once('intro:${s.stepIndex}:${s.sideChoice.name}', () {
+          final instruction = s.step.hasSides && s.sideChoice != SideChoice.both
+              ? strings.sideInstruction(s.step, s.sideChoice)
+              : strings.stepInstructionFor(s.step, mode);
           return s.lastSaved == null
               ? instruction
               : '${strings.voiceStepDone} $instruction';

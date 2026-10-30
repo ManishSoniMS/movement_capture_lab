@@ -4,14 +4,11 @@ import 'package:video_player/video_player.dart';
 
 import '../domain/capture_state.dart';
 import '../domain/config.dart';
-import '../domain/pose_topology.dart';
-import '../domain/review_samples.dart';
 import 'controller.dart';
 import 'customization.dart';
-import 'skeleton_layer.dart';
 
-/// Full-screen playback of the clip just recorded, with the tracked skeleton
-/// in time with the video, and Use / Record again / Cancel.
+/// Full-screen playback of the clip just recorded, the overall quality
+/// result, and Continue (or Use anyway) / Record again / Cancel.
 class ReviewView extends StatefulWidget {
   const ReviewView({
     super.key,
@@ -19,7 +16,6 @@ class ReviewView extends StatefulWidget {
     required this.review,
     required this.strings,
     required this.icons,
-    required this.skeletonColors,
     required this.activeColor,
     required this.onCancel,
   });
@@ -28,7 +24,6 @@ class ReviewView extends StatefulWidget {
   final Reviewing review;
   final MovementCaptureStrings strings;
   final MovementCaptureIcons icons;
-  final SkeletonColors skeletonColors;
   final Color activeColor;
   final VoidCallback onCancel;
 
@@ -39,7 +34,6 @@ class ReviewView extends StatefulWidget {
 class _ReviewViewState extends State<ReviewView> {
   late final VideoPlayerController _player =
       VideoPlayerController.file(widget.review.video);
-  final ValueNotifier<OverlayFrame?> _overlay = ValueNotifier(null);
   bool _ready = false;
   bool _failed = false;
   bool _busy = false; // a choice was made; ignore further taps
@@ -47,7 +41,6 @@ class _ReviewViewState extends State<ReviewView> {
   @override
   void initState() {
     super.initState();
-    _player.addListener(_onTick);
     _init();
   }
 
@@ -64,17 +57,9 @@ class _ReviewViewState extends State<ReviewView> {
     }
   }
 
-  void _onTick() {
-    if (!_ready) return;
-    _overlay.value =
-        overlayAt(widget.review.samples, _player.value.position.inMilliseconds);
-  }
-
   @override
   void dispose() {
-    _player.removeListener(_onTick);
     _player.dispose();
-    _overlay.dispose();
     super.dispose();
   }
 
@@ -97,8 +82,8 @@ class _ReviewViewState extends State<ReviewView> {
     final mode = config.mode;
     final flip =
         config.reviewMirrorFor(widget.review.cameraKind, defaultTargetPlatform);
-    final showSkeleton =
-        config.showSkeleton && widget.review.samples.isNotEmpty;
+    final quality = widget.review.quality;
+    final good = quality.passes;
     const tall = Size(0, 56);
 
     final video = _failed
@@ -122,13 +107,6 @@ class _ReviewViewState extends State<ReviewView> {
                       fit: StackFit.expand,
                       children: [
                         VideoPlayer(_player),
-                        if (showSkeleton)
-                          SkeletonLayer(
-                            frames: _overlay,
-                            colors: widget.skeletonColors,
-                            minLikelihood: config.skeletonMinLikelihood,
-                            transition: const Duration(milliseconds: 50),
-                          ),
                       ],
                     ),
                   ),
@@ -143,21 +121,43 @@ class _ReviewViewState extends State<ReviewView> {
       onPressed: _busy ? null : widget.onCancel,
       child: Text(s.cancel),
     );
-    final again = OutlinedButton.icon(
-      style: OutlinedButton.styleFrom(
-          minimumSize: tall,
-          foregroundColor: scheme.onInverseSurface,
-          side: BorderSide(color: scheme.onInverseSurface)),
-      onPressed: _busy ? null : () => _choose(c.retakeStep),
-      icon: Icon(widget.icons.recordAgain),
-      label: Text(s.recordAgain),
-    );
-    final use = FilledButton.icon(
-      style: FilledButton.styleFrom(minimumSize: tall),
-      onPressed: _busy ? null : () => _choose(c.acceptReview),
-      icon: Icon(widget.icons.useVideo),
-      label: Text(s.useVideo),
-    );
+    final againLabel = Text(s.recordAgain);
+    final again = good
+        ? OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+                minimumSize: tall,
+                foregroundColor: scheme.onInverseSurface,
+                side: BorderSide(color: scheme.onInverseSurface)),
+            onPressed: _busy ? null : () => _choose(c.retakeStep),
+            icon: Icon(widget.icons.recordAgain),
+            label: againLabel,
+          )
+        : FilledButton.icon(
+            style: FilledButton.styleFrom(minimumSize: tall),
+            onPressed: _busy ? null : () => _choose(c.retakeStep),
+            icon: Icon(widget.icons.recordAgain),
+            label: againLabel,
+          );
+    // Passed: Continue is the obvious next step. Failed: Record again is,
+    // and Use anyway is a quieter choice (hidden when config turns it off).
+    final Widget? use = good
+        ? FilledButton.icon(
+            style: FilledButton.styleFrom(minimumSize: tall),
+            onPressed: _busy ? null : () => _choose(c.acceptReview),
+            icon: Icon(widget.icons.useVideo),
+            label: Text(s.summaryContinue),
+          )
+        : config.allowUseAnyway
+            ? OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                    minimumSize: tall,
+                    foregroundColor: scheme.onInverseSurface,
+                    side: BorderSide(color: scheme.onInverseSurface)),
+                onPressed: _busy ? null : () => _choose(c.acceptReview),
+                icon: Icon(widget.icons.useVideo),
+                label: Text(s.useAnyway),
+              )
+            : null;
 
     return ColoredBox(
       color: scheme.inverseSurface,
@@ -185,6 +185,29 @@ class _ReviewViewState extends State<ReviewView> {
                     const SizedBox(height: 4),
                     Text(s.reviewHintFor(mode),
                         style: theme.textTheme.titleMedium),
+                    if (quality.measured) ...[
+                      const SizedBox(height: 12),
+                      Row(
+                        key: const ValueKey('quality-result'),
+                        children: [
+                          Icon(
+                              good
+                                  ? widget.icons.statusGood
+                                  : widget.icons.statusBad,
+                              size: 32,
+                              color: good ? widget.activeColor : scheme.error),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              good
+                                  ? s.summaryGoodTitle
+                                  : '${s.summaryRedoTitle}. ${s.summaryReason(quality)}',
+                              style: theme.textTheme.titleLarge,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -233,22 +256,28 @@ class _ReviewViewState extends State<ReviewView> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    use,
+                    good ? use! : again,
                     const SizedBox(height: 12),
                     Row(children: [
                       Expanded(child: cancel),
                       const SizedBox(width: 12),
-                      Expanded(child: again),
+                      Expanded(child: good ? again : (use ?? const SizedBox())),
                     ]),
                   ],
                 );
               }
               return Row(children: [
                 SizedBox(width: 180, child: cancel),
-                const SizedBox(width: 16),
-                SizedBox(width: 240, child: again),
                 const Spacer(),
-                SizedBox(width: 280, child: use),
+                if (!good && use != null) ...[
+                  SizedBox(width: 240, child: use),
+                  const SizedBox(width: 16),
+                ],
+                SizedBox(width: 280, child: good ? use! : again),
+                if (good) ...[
+                  const SizedBox(width: 16),
+                  SizedBox(width: 240, child: again),
+                ],
               ]);
             }),
           ],

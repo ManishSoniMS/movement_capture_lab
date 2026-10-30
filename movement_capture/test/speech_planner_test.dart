@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movement_capture/movement_capture.dart';
 import 'package:movement_capture/src/domain/capture_state.dart';
+import 'package:movement_capture/src/domain/quality_summary.dart';
 import 'package:movement_capture/src/presentation/speech_planner.dart';
 
 void main() {
@@ -127,7 +128,8 @@ void main() {
     final p = SpeechPlanner(strings: strings, mode: CaptureMode.selfGuided);
     final review = Reviewing(
       video: File('x.mp4'),
-      samples: const [],
+      quality: QualitySummary.from(const [],
+          durationMs: 5000, config: MovementCaptureConfig()),
       cameraKind: CameraKind.front,
       fileMirrored: false,
     );

@@ -75,8 +75,7 @@ void main() {
         90);
   });
 
-  test('skeleton draws uncertain points from likelihood 0.2', () {
-    expect(MovementCaptureConfig().skeletonMinLikelihood, 0.2);
+  test('landmark likelihood default', () {
     expect(MovementCaptureConfig().minLandmarkLikelihood, 0.5);
   });
 

@@ -29,13 +29,14 @@ class LabSettings {
   String? lastCameraId;
   UploaderMode uploaderMode = UploaderMode.mock;
   bool debugOverlay = true;
-  bool showSkeleton = true;
-  final Set<CaptureStep> steps = {
-    CaptureStep.fullBody,
-    CaptureStep.face,
-    CaptureStep.hands,
-    CaptureStep.feet,
-  };
+  bool blockOnPoorQuality = false;
+
+  /// One scan type per session; nothing is pre-selected.
+  final ScanSelection scan = ScanSelection();
+
+  /// Shows steps and live readouts on the camera screen. Persisted by the
+  /// home page through a SettingsStore.
+  bool showCameraDetails = true;
   double closeUpDurationS = 10;
   bool handTracking = true;
   bool requireBothHands = true;
@@ -48,10 +49,8 @@ class LabSettings {
 
   MovementCaptureConfig toConfig() => MovementCaptureConfig(
         maxDuration: Duration(seconds: maxDurationS.round()),
-        steps: [
-          for (final s in CaptureStep.values)
-            if (steps.contains(s)) s,
-        ],
+        steps: scan.steps,
+        showDetails: showCameraDetails,
         stepDurations: {
           for (final s in const [
             CaptureStep.face,
@@ -81,7 +80,7 @@ class LabSettings {
         mirrorBackPreview: mirrorBack,
         orientation: orientation,
         allowRecordingWithoutLiveChecks: allowNoLiveChecks,
-        showSkeleton: showSkeleton,
+        blockOnPoorQuality: blockOnPoorQuality,
         safeZoneInset: safeZoneInset,
         minLandmarkLikelihood: minLikelihood,
         minMeanLuma: minLuma.round(),
@@ -105,8 +104,8 @@ class LabSettings {
       'clipped=${maxClipped.toStringAsFixed(2)} centre/border=${minCenterToBorder.toStringAsFixed(2)} '
       'interval=${analysisIntervalMs < 1 ? 'auto' : '${analysisIntervalMs.round()}ms'} '
       'mirror(usb/front/back)=${mirrorExternal ?? 'auto'}/${mirrorFront ?? 'auto'}/${mirrorBack ?? 'auto'} '
-      'orientation=${orientation.name} noLiveChecks=$allowNoLiveChecks skeleton=$showSkeleton '
-      'steps=${steps.map((s) => s.name).join('+')} '
+      'orientation=${orientation.name} noLiveChecks=$allowNoLiveChecks blockOnPoorQuality=$blockOnPoorQuality '
+      'scan=${scan.selected?.name ?? 'none'} details=$showCameraDetails '
       'closeUp=${closeUpDurationS.round()}s feetBack=$feetUseBackCamera '
       'hands=$handTracking/${requireBothHands ? 'both' : 'one'} '
       'review=$reviewBeforeUpload '

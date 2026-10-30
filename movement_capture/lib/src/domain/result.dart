@@ -1,3 +1,4 @@
+import 'body_sides.dart';
 import 'capture_step.dart';
 import 'support_report.dart';
 
@@ -19,6 +20,7 @@ class CaptureStepResult {
     this.analysisId,
     this.skipped = false,
     this.retakes = 0,
+    this.sideChoice = SideChoice.both,
   });
 
   final CaptureStep step;
@@ -29,6 +31,17 @@ class CaptureStepResult {
 
   /// How many times "Record again" was chosen for this step.
   final int retakes;
+
+  /// Which sides the person chose for a hands or feet step. Always [SideChoice.both]
+  /// for other steps.
+  final SideChoice sideChoice;
+
+  /// Outcome for one side. A side left out by choice is never "failed".
+  SideStatus statusOf(BodySide side) {
+    if (skipped) return SideStatus.skipped;
+    if (!sideChoice.sides.contains(side)) return SideStatus.notScannedByChoice;
+    return analysisId != null ? SideStatus.scanned : SideStatus.failed;
+  }
 }
 
 class MovementCaptureResult {

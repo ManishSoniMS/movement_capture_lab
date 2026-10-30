@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:movement_capture/src/domain/pose_topology.dart';
@@ -37,36 +35,5 @@ void main() {
 
   test('regions cover face, both hands and both feet', () {
     expect(poseRegions.values.toSet(), containsAll(BodyRegion.values));
-  });
-
-  test('lerp glides existing points and adds new ones at once', () {
-    const a = OverlayFrame(pose: [
-      PosePoint(type: PoseJoint.nose, x: 0, y: 0, likelihood: 1),
-    ]);
-    const b = OverlayFrame(pose: [
-      PosePoint(type: PoseJoint.nose, x: 1, y: 1, likelihood: 1),
-      PosePoint(type: PoseJoint.leftEye, x: 0.5, y: 0.5, likelihood: 1),
-    ]);
-    final mid = OverlayFrame.lerp(a, b, 0.5);
-    final nose = mid.pose.firstWhere((p) => p.type == PoseJoint.nose);
-    expect(nose.x, closeTo(0.5, 1e-9));
-    expect(mid.pose.any((p) => p.type == PoseJoint.leftEye), isTrue);
-    expect(OverlayFrame.lerp(null, b, 0.2).pose.length, 2);
-  });
-
-  test('face boxes glide when the count matches', () {
-    const a = OverlayFrame(faces: [Rect.fromLTRB(0, 0, 0.2, 0.2)]);
-    const b = OverlayFrame(faces: [Rect.fromLTRB(0.2, 0.2, 0.4, 0.4)]);
-    expect(OverlayFrame.lerp(a, b, 0.5).faces.single.left, closeTo(0.1, 1e-9));
-  });
-
-  test('face contours are kept from the newer frame, not interpolated', () {
-    const a = OverlayFrame(faceContours: [
-      [Offset(0, 0), Offset(0.1, 0.1)],
-    ]);
-    const b = OverlayFrame(faceContours: [
-      [Offset(0.5, 0.5), Offset(0.6, 0.6)],
-    ]);
-    expect(OverlayFrame.lerp(a, b, 0.5).faceContours, b.faceContours);
   });
 }

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../domain/body_sides.dart';
 import '../domain/camera_choice.dart';
 import '../domain/capture_issue.dart';
 import '../domain/capture_state.dart';
 import '../domain/capture_step.dart';
 import '../domain/config.dart';
+import '../domain/quality_status.dart';
+import '../domain/quality_summary.dart';
 
 /// Every user-facing string. English defaults; the host passes translations.
 /// Templates use {elapsed}, {total}, {percent}, {n} and {step} placeholders.
@@ -58,6 +61,9 @@ class MovementCaptureStrings {
     this.tabletCamerasHeading = 'Tablet cameras',
     this.noUsbCameraNotice = 'No USB camera found. Using the tablet camera.',
     this.refreshCameras = 'Refresh list',
+    this.scanTypeTitle = 'What would you like to scan?',
+    this.scanTypeStart = 'Start',
+    this.scanTypeSelected = 'Selected',
     this.useAnotherCamera = 'Use another camera',
     this.noLiveChecksNotice =
         'This device cannot check the video while recording. Please stay inside the box until recording ends.',
@@ -76,6 +82,32 @@ class MovementCaptureStrings {
         'Point the camera at the patient\'s feet so both feet are inside the box, then tap Start.',
     this.stepProgressTemplate = 'Step {n} of {total} · {step}',
     this.stepSavedTemplate = 'Saved: {step}',
+    this.issueShowLeftHand = 'Please show your left hand.',
+    this.issueShowRightHand = 'Please show your right hand.',
+    this.sideChoiceHandsTitle = 'Which hands would you like to scan?',
+    this.sideChoiceFeetTitle = 'Which feet would you like to scan?',
+    this.sideBothHands = 'Both hands',
+    this.sideLeftHandOnly = 'Left hand only',
+    this.sideRightHandOnly = 'Right hand only',
+    this.sideBothFeet = 'Both feet',
+    this.sideLeftFootOnly = 'Left foot only',
+    this.sideRightFootOnly = 'Right foot only',
+    this.stepInstructionLeftHand =
+        'Hold your left hand up to the camera, palm facing it and fingers spread, then tap Start.',
+    this.stepInstructionRightHand =
+        'Hold your right hand up to the camera, palm facing it and fingers spread, then tap Start.',
+    this.stepInstructionLeftFoot =
+        'Point the camera at the left foot so it is inside the box, then tap Start.',
+    this.stepInstructionRightFoot =
+        'Point the camera at the right foot so it is inside the box, then tap Start.',
+    this.leftHandName = 'Left hand',
+    this.rightHandName = 'Right hand',
+    this.leftFootName = 'Left foot',
+    this.rightFootName = 'Right foot',
+    this.sideScanned = '✓ scanned',
+    this.sideNotScannedChoice = 'not scanned (your choice)',
+    this.sideNotScannedFailed = 'not scanned',
+    this.sideSkipped = 'skipped',
     this.skipStep = 'Skip this step',
     this.selfStepInstructionFullBody =
         'Stand the phone up so the screen faces you. Tap Start, then step back until your whole body is inside the box.',
@@ -105,6 +137,24 @@ class MovementCaptureStrings {
         'The video can\'t be shown here, but it was recorded.',
     this.useVideo = 'Use this video',
     this.recordAgain = 'Record again',
+    this.statusInFrame = 'You are in the frame',
+    this.statusNotInFrame = 'You are not in the frame',
+    this.statusQualityGood = 'Video quality: Good',
+    this.statusQualityTemplate = 'Video quality: {problem}',
+    this.problemTooDark = 'Too dark',
+    this.problemTooBright = 'Too bright',
+    this.problemTooFar = 'Move closer',
+    this.problemTooClose = 'Move back',
+    this.problemBlurry = 'Blurry. Check the camera or hold still',
+    this.problemMoving = 'Please hold still',
+    this.summaryGoodTitle = 'Good for analysis.',
+    this.summaryContinue = 'Continue',
+    this.summaryRedoTitle = 'Please record again',
+    this.summaryOutOfFrame = 'You were out of the frame for part of the video.',
+    this.summaryTooShort = 'The video is too short.',
+    this.summaryProblemTemplate =
+        'The video quality was not good enough: {problem}.',
+    this.useAnyway = 'Use anyway',
     this.play = 'Play',
     this.pause = 'Pause',
     this.voiceReview =
@@ -156,6 +206,11 @@ class MovementCaptureStrings {
   final String tabletCamerasHeading;
   final String noUsbCameraNotice;
   final String refreshCameras;
+  final String scanTypeTitle;
+  final String scanTypeStart;
+
+  /// Spoken by screen readers on the chosen tile (the check mark is visual).
+  final String scanTypeSelected;
   final String useAnotherCamera;
   final String noLiveChecksNotice;
   final String openSettings;
@@ -169,6 +224,28 @@ class MovementCaptureStrings {
   final String stepInstructionFeet;
   final String stepProgressTemplate;
   final String stepSavedTemplate;
+  final String issueShowLeftHand;
+  final String issueShowRightHand;
+  final String sideChoiceHandsTitle;
+  final String sideChoiceFeetTitle;
+  final String sideBothHands;
+  final String sideLeftHandOnly;
+  final String sideRightHandOnly;
+  final String sideBothFeet;
+  final String sideLeftFootOnly;
+  final String sideRightFootOnly;
+  final String stepInstructionLeftHand;
+  final String stepInstructionRightHand;
+  final String stepInstructionLeftFoot;
+  final String stepInstructionRightFoot;
+  final String leftHandName;
+  final String rightHandName;
+  final String leftFootName;
+  final String rightFootName;
+  final String sideScanned;
+  final String sideNotScannedChoice;
+  final String sideNotScannedFailed;
+  final String sideSkipped;
   final String skipStep;
   final String selfStepInstructionFullBody;
   final String selfStepInstructionFace;
@@ -188,6 +265,27 @@ class MovementCaptureStrings {
   final String reviewUnavailable;
   final String useVideo;
   final String recordAgain;
+  final String statusInFrame;
+  final String statusNotInFrame;
+  final String statusQualityGood;
+
+  /// `{problem}` is replaced by the matching `problem…` text.
+  final String statusQualityTemplate;
+  final String problemTooDark;
+  final String problemTooBright;
+  final String problemTooFar;
+  final String problemTooClose;
+  final String problemBlurry;
+  final String problemMoving;
+  final String summaryGoodTitle;
+  final String summaryContinue;
+  final String summaryRedoTitle;
+  final String summaryOutOfFrame;
+  final String summaryTooShort;
+
+  /// `{problem}` is replaced by the matching `problem…` text.
+  final String summaryProblemTemplate;
+  final String useAnyway;
   final String play;
   final String pause;
   final String voiceReview;
@@ -197,7 +295,6 @@ class MovementCaptureStrings {
   final String quitKeepGoing;
   final String mute;
   final String unmute;
-
   String issue(CaptureIssue i) => switch (i) {
         CaptureIssue.multiplePeople => issueMultiplePeople,
         CaptureIssue.noPerson => issueNoPerson,
@@ -206,6 +303,8 @@ class MovementCaptureStrings {
         CaptureIssue.faceTooFar => issueFaceTooFar,
         CaptureIssue.noHands => issueNoHands,
         CaptureIssue.oneHand => issueOneHand,
+        CaptureIssue.showLeftHand => issueShowLeftHand,
+        CaptureIssue.showRightHand => issueShowRightHand,
         CaptureIssue.tooDark => issueTooDark,
         CaptureIssue.tooBright => issueTooBright,
         CaptureIssue.backlit => issueBacklit,
@@ -234,6 +333,29 @@ class MovementCaptureStrings {
       mode == CaptureMode.selfGuided && i == CaptureIssue.backlit
           ? selfIssueBacklit
           : issue(i);
+
+  String problemText(QualityProblem p) => switch (p) {
+        QualityProblem.tooDark => problemTooDark,
+        QualityProblem.tooBright => problemTooBright,
+        QualityProblem.tooFar => problemTooFar,
+        QualityProblem.tooClose => problemTooClose,
+        QualityProblem.blurry => problemBlurry,
+        QualityProblem.moving => problemMoving,
+      };
+
+  /// "Video quality: Good" or "Video quality: Too dark".
+  String qualityLine(QualityProblem? p) => p == null
+      ? statusQualityGood
+      : statusQualityTemplate.replaceAll('{problem}', problemText(p));
+
+  /// Why a recording needs repeating, for the after-recording screen.
+  String summaryReason(QualitySummary summary) => switch (summary.failure) {
+        SummaryFailure.tooShort => summaryTooShort,
+        SummaryFailure.outOfFrame => summaryOutOfFrame,
+        SummaryFailure.problem => summaryProblemTemplate.replaceAll(
+            '{problem}', problemText(summary.worstProblem!).toLowerCase()),
+        null => summaryGoodTitle,
+      };
 
   String voiceStartingIn(int n) =>
       voiceStartingInTemplate.replaceAll('{n}', '$n');
@@ -276,6 +398,49 @@ class MovementCaptureStrings {
           .replaceAll('{n}', '${index + 1}')
           .replaceAll('{total}', '$total')
           .replaceAll('{step}', stepTitle(s));
+
+  String sideChoiceTitle(CaptureStep s) =>
+      s == CaptureStep.feet ? sideChoiceFeetTitle : sideChoiceHandsTitle;
+
+  String sideChoiceLabel(CaptureStep s, SideChoice c) {
+    final feet = s == CaptureStep.feet;
+    return switch (c) {
+      SideChoice.both => feet ? sideBothFeet : sideBothHands,
+      SideChoice.leftOnly => feet ? sideLeftFootOnly : sideLeftHandOnly,
+      SideChoice.rightOnly => feet ? sideRightFootOnly : sideRightHandOnly,
+    };
+  }
+
+  /// Instruction for a one-sided hands or feet step.
+  String sideInstruction(CaptureStep s, SideChoice c) {
+    final feet = s == CaptureStep.feet;
+    return switch (c) {
+      SideChoice.leftOnly =>
+        feet ? stepInstructionLeftFoot : stepInstructionLeftHand,
+      SideChoice.rightOnly =>
+        feet ? stepInstructionRightFoot : stepInstructionRightHand,
+      SideChoice.both => stepInstruction(s),
+    };
+  }
+
+  String sideName(CaptureStep s, BodySide side) {
+    final feet = s == CaptureStep.feet;
+    return switch (side) {
+      BodySide.left => feet ? leftFootName : leftHandName,
+      BodySide.right => feet ? rightFootName : rightHandName,
+    };
+  }
+
+  /// "Left hand — ✓ scanned" / "Right hand — not scanned (your choice)".
+  String sideStatusLine(CaptureStep s, BodySide side, SideStatus status) {
+    final text = switch (status) {
+      SideStatus.scanned => sideScanned,
+      SideStatus.notScannedByChoice => sideNotScannedChoice,
+      SideStatus.failed => sideNotScannedFailed,
+      SideStatus.skipped => sideSkipped,
+    };
+    return '${sideName(s, side)} — $text';
+  }
 
   String stepSaved(CaptureStep s) =>
       stepSavedTemplate.replaceAll('{step}', stepTitle(s));
@@ -322,6 +487,9 @@ class MovementCaptureIcons {
     this.voiceOff = Icons.volume_off,
     this.recordAgain = Icons.replay,
     this.useVideo = Icons.check,
+    this.statusGood = Icons.check_circle,
+    this.statusWarning = Icons.warning_amber_rounded,
+    this.statusBad = Icons.cancel,
     this.play = Icons.play_arrow,
     this.pause = Icons.pause,
   });
@@ -357,6 +525,9 @@ class MovementCaptureIcons {
   final IconData voiceOff;
   final IconData recordAgain;
   final IconData useVideo;
+  final IconData statusGood;
+  final IconData statusWarning;
+  final IconData statusBad;
   final IconData play;
   final IconData pause;
 
@@ -368,6 +539,8 @@ class MovementCaptureIcons {
         CaptureIssue.faceTooFar => faceTooFar,
         CaptureIssue.noHands => noHands,
         CaptureIssue.oneHand => oneHand,
+        CaptureIssue.showLeftHand => oneHand,
+        CaptureIssue.showRightHand => oneHand,
         CaptureIssue.tooDark => tooDark,
         CaptureIssue.tooBright => tooBright,
         CaptureIssue.backlit => backlit,
@@ -387,10 +560,7 @@ class MovementCaptureStyle {
   const MovementCaptureStyle({
     this.errorColor,
     this.activeColor,
-    this.skeletonBodyColor,
-    this.skeletonFaceColor,
-    this.skeletonHandColor,
-    this.skeletonFootColor,
+    this.warningColor,
   });
 
   /// Default: colorScheme.error.
@@ -399,9 +569,7 @@ class MovementCaptureStyle {
   /// Default: colorScheme.primary.
   final Color? activeColor;
 
-  /// Defaults: primary, tertiary, secondary, inversePrimary.
-  final Color? skeletonBodyColor;
-  final Color? skeletonFaceColor;
-  final Color? skeletonHandColor;
-  final Color? skeletonFootColor;
+  /// Amber "can be better" colour in the status area. Default: an amber that
+  /// reads on the dark status bar.
+  final Color? warningColor;
 }

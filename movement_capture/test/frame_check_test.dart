@@ -42,6 +42,8 @@ void main() {
         CaptureIssue.noFace,
         CaptureIssue.noHands,
         CaptureIssue.oneHand,
+        CaptureIssue.showLeftHand,
+        CaptureIssue.showRightHand,
         CaptureIssue.outOfFrame,
         CaptureIssue.faceTooFar,
         CaptureIssue.tooDark,

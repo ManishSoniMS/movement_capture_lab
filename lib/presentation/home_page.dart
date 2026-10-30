@@ -5,10 +5,15 @@ import 'package:movement_capture/movement_capture.dart';
 import 'camera_info_page.dart';
 import '../domain/lab_settings.dart';
 import '../data/tts_voice.dart';
+import '../data/prefs_settings_store.dart';
 import '../data/uploaders.dart';
+import '../domain/settings_store.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  const HomePage({super.key, this.store});
+
+  /// Where the details switch is saved; defaults to the device storage.
+  final SettingsStore? store;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -20,6 +25,7 @@ class _HomePageState extends State<HomePage> {
   final TextEditingController _url = TextEditingController();
   final TextEditingController _token = TextEditingController();
 
+  late final SettingsStore _store = widget.store ?? PrefsSettingsStore();
   SupportReport? _support;
   bool _checking = false;
 
@@ -27,6 +33,9 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _runSupportCheck();
+    _store.loadShowCameraDetails().then((v) {
+      if (mounted) setState(() => _s.showCameraDetails = v);
+    });
   }
 
   Future<void> _runSupportCheck() async {
@@ -150,6 +159,27 @@ class _HomePageState extends State<HomePage> {
       body: ListView(
         padding: const EdgeInsets.only(bottom: 120),
         children: [
+          SizedBox(
+            height: 520,
+            child: ScanTypePicker(
+              selected: _s.scan.selected,
+              onSelected: (step) => setState(() => _s.scan.select(step)),
+              onStart: _start,
+              strings: const MovementCaptureStrings(),
+              icons: const MovementCaptureIcons(),
+            ),
+          ),
+          SwitchListTile(
+            key: const ValueKey('show-camera-details'),
+            minTileHeight: 72,
+            title: const Text('Show camera details'),
+            subtitle: const Text('Step counter and live readouts'),
+            value: _s.showCameraDetails,
+            onChanged: (v) {
+              setState(() => _s.showCameraDetails = v);
+              _store.saveShowCameraDetails(v);
+            },
+          ),
           const _Section('Support check'),
           ListTile(
             leading: _checking
@@ -201,18 +231,6 @@ class _HomePageState extends State<HomePage> {
               _int,
               (v) => _s.analysisIntervalMs = v),
           const _Section('Steps'),
-          for (final step in CaptureStep.values)
-            CheckboxListTile(
-              title: Text(step.name),
-              value: _s.steps.contains(step),
-              onChanged: (v) => setState(() {
-                if (v == true) {
-                  _s.steps.add(step);
-                } else if (_s.steps.length > 1) {
-                  _s.steps.remove(step);
-                }
-              }),
-            ),
           _slider('Face / hands / feet duration (s)', _s.closeUpDurationS, 5,
               30, 25, _int, (v) => _s.closeUpDurationS = v),
           SwitchListTile(
@@ -384,10 +402,11 @@ class _HomePageState extends State<HomePage> {
           ],
           const _Section('Tools'),
           SwitchListTile(
-            title: const Text('Show skeleton'),
-            subtitle: const Text('Independent of the debug overlay'),
-            value: _s.showSkeleton,
-            onChanged: (v) => setState(() => _s.showSkeleton = v),
+            title: const Text('Block on poor quality'),
+            subtitle: const Text(
+                'Off: the status area warns and the operator decides'),
+            value: _s.blockOnPoorQuality,
+            onChanged: (v) => setState(() => _s.blockOnPoorQuality = v),
           ),
           SwitchListTile(
             title: const Text('Debug overlay'),
@@ -424,11 +443,6 @@ class _HomePageState extends State<HomePage> {
           else
             for (final line in _log) ListTile(title: Text(line)),
         ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _start,
-        icon: const Icon(Icons.videocam),
-        label: const Text('Start capture'),
       ),
     );
   }

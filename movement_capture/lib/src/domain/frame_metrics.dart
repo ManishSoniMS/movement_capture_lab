@@ -6,6 +6,7 @@ import 'face_snapshot.dart';
 import 'hand_topology.dart';
 import 'luma_stats.dart';
 import 'pose_topology.dart';
+import 'quality_status.dart';
 
 /// Thrown by a [FrameAnalyzer] when the camera stream format is unusable.
 class UnsupportedFrameFormat implements Exception {
@@ -74,7 +75,7 @@ class FrameCheck {
     required this.metrics,
     this.uprightSize = Size.zero,
     this.rotationDegrees = 0,
-    this.overlay = OverlayFrame.empty,
+    this.quality,
     this.pose = const [],
     this.faceCount = 0,
     this.face,
@@ -88,8 +89,11 @@ class FrameCheck {
   final Size uprightSize;
   final int rotationDegrees;
 
-  /// What the skeleton layer draws for this frame.
-  final OverlayFrame overlay;
+  /// In-frame verdict for this frame plus the lighting, sharpness, movement
+  /// and distance checks. Sharpness and movement are re-measured only every
+  /// [MovementCaptureConfig.qualitySampleInterval]; between those the last
+  /// measurement is reused.
+  final QualityReading? quality;
 
   /// All pose points of the tracked person (fullBody step).
   final List<PosePoint> pose;

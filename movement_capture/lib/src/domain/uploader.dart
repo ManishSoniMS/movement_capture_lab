@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:camera/camera.dart';
 
+import 'body_sides.dart';
 import 'capture_step.dart';
 
 /// One recorded step handed to the uploader. The package deletes [file] and
@@ -25,6 +26,7 @@ class MovementClip {
     this.landmarksFile,
     this.retakes = 0,
     this.reviewed = false,
+    this.sideChoice = SideChoice.both,
   });
 
   final File file;
@@ -64,6 +66,10 @@ class MovementClip {
   /// True when the clip was approved on the review screen.
   final bool reviewed;
 
+  /// Hands and feet steps: which sides were recorded. [SideChoice.both] for
+  /// every other step.
+  final SideChoice sideChoice;
+
   /// Every text field for a multipart form: metadata first, then the
   /// package's fields (which win on a name clash).
   Map<String, String> get formFields => {
@@ -81,6 +87,8 @@ class MovementClip {
         'stepCount': '$stepCount',
         'retakes': '$retakes',
         'reviewed': '$reviewed',
+        // Sent only for one-sided scans, so the default payload is unchanged.
+        if (sideChoice != SideChoice.both) 'sides': sideChoice.wire,
       };
 }
 

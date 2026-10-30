@@ -41,13 +41,25 @@ class MovementCaptureConfig {
     this.voiceIssueRepeat = const Duration(seconds: 6),
     this.allowRecordingWithoutLiveChecks = true,
     this.reviewBeforeUpload = true,
-    this.showSkeleton = true,
-    this.skeletonMinLikelihood = 0.2,
+    this.blockOnPoorQuality = false,
+    this.showDetails = true,
+    this.allowUseAnyway = true,
+    this.qualityHold = const Duration(milliseconds: 500),
+    this.qualitySampleInterval = const Duration(milliseconds: 300),
+    this.minSharpness = 40,
+    this.maxMotion = 10,
+    this.faceMaxWidthFraction = 0.7,
+    this.bodyMinHeightFraction = 0.55,
+    this.bodyMaxHeightFraction = 0.92,
+    this.minInFrameShare = 0.9,
+    this.minCheckPassShare = 0.8,
+    this.minRecordedDuration = const Duration(seconds: 3),
     this.safeZoneInset = 0.075,
     this.minLandmarkLikelihood = 0.5,
     this.faceMinWidthFraction = 0.28,
     this.handTracking = true,
     this.requireBothHands = true,
+    this.offerSideChoice = true,
     this.minMeanLuma = 60,
     this.maxMeanLuma = 200,
     this.maxClippedFraction = 0.25,
@@ -135,13 +147,55 @@ class MovementCaptureConfig {
   /// Show each recorded clip for approval (Use / Record again) before upload.
   final bool reviewBeforeUpload;
 
-  /// Draw the tracked skeleton on the preview (independent of the debug
-  /// overlay).
-  final bool showSkeleton;
+  /// true = poor quality (not in frame, too dark, ...) stops the countdown and
+  /// aborts a recording, as the strict flow did. false (default) = the status
+  /// area shows the problem and the patient or operator decides.
+  final bool blockOnPoorQuality;
 
-  /// Points below this likelihood are not drawn; up to 0.7 they are drawn
-  /// faded. The quality checks still use [minLandmarkLikelihood].
-  final double skeletonMinLikelihood;
+  /// Shows the technical details on the camera screen: step counter and
+  /// live readouts. Hiding only hides: the quality checks keep running and
+  /// their results are still saved. Default on (UNCONFIRMED: the team may
+  /// prefer off for patients).
+  final bool showDetails;
+
+  /// After a recording that failed the overall check, offer "Use anyway".
+  final bool allowUseAnyway;
+
+  // Quality-check thresholds. UNCONFIRMED: no model requirement was found in
+  // the repo; the ML team must set these. Brightness uses [minMeanLuma] and
+  // [maxMeanLuma], face distance uses [faceMinWidthFraction].
+
+  /// A verdict must hold this long before the on-screen status changes.
+  final Duration qualityHold;
+
+  /// Time between sharpness and movement samples (~3 per second).
+  final Duration qualitySampleInterval;
+
+  /// Minimum variance of the Laplacian on the 160 px brightness copy
+  /// (squared brightness levels). Below = "blurry".
+  final double minSharpness;
+
+  /// Maximum mean brightness change between consecutive samples (0–255).
+  /// Above = "hold still".
+  final double maxMotion;
+
+  /// Face step: face box wider than this share of the frame = "too close".
+  final double faceMaxWidthFraction;
+
+  /// Full-body step: head-to-ankle span as a share of the frame height,
+  /// below = "move closer", above = "move back".
+  final double bodyMinHeightFraction;
+  final double bodyMaxHeightFraction;
+
+  /// Overall check after recording: least share of time in frame.
+  final double minInFrameShare;
+
+  /// Overall check after recording: least share of time each quality check
+  /// must have passed.
+  final double minCheckPassShare;
+
+  /// Overall check after recording: shortest acceptable clip.
+  final Duration minRecordedDuration;
 
   /// Fraction of width/height kept clear at each edge (wide-lens distortion).
   final double safeZoneInset;
@@ -155,6 +209,10 @@ class MovementCaptureConfig {
 
   /// Hands step: both hands must be visible.
   final bool requireBothHands;
+
+  /// Hands and feet steps: ask whether to scan both sides, left only or
+  /// right only. Both is the default. Turn off to always scan both.
+  final bool offerSideChoice;
   final int minMeanLuma;
   final int maxMeanLuma;
   final double maxClippedFraction;

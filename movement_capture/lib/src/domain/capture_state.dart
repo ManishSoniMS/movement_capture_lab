@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'camera_choice.dart';
 import 'capture_issue.dart';
-import 'review_samples.dart';
+import 'quality_summary.dart';
 
 sealed class CaptureState {
   const CaptureState();
@@ -63,14 +63,14 @@ final class Recording extends CaptureState {
 final class Reviewing extends CaptureState {
   const Reviewing({
     required this.video,
-    required this.samples,
+    required this.quality,
     required this.cameraKind,
     required this.fileMirrored,
   });
   final File video;
 
-  /// Skeleton samples taken while recording (may be empty).
-  final List<TimedOverlay> samples;
+  /// How the recording measured up (see [QualitySummary.measured]).
+  final QualitySummary quality;
   final CameraKind cameraKind;
   final bool fileMirrored;
 }

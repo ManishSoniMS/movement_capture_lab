@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
+import '../domain/body_sides.dart';
 import '../domain/capture_issue.dart';
 import '../domain/capture_step.dart';
 import '../domain/config.dart';
@@ -16,10 +17,12 @@ import '../domain/frame_downscaler.dart';
 import '../domain/hand_topology.dart';
 import '../domain/frame_metrics.dart';
 import '../domain/luma_stats.dart';
+import '../domain/luma_thumb.dart';
+import '../domain/quality_status.dart';
 import '../domain/pose_topology.dart';
 import 'native_bridge.dart';
 
-/// ML Kit detection plus luma stats, with the detectors chosen per step:
+/// ML t detection plus luma stats, with the detectors chosen per step:
 /// full body = pose + fast face count; face = face with landmarks and
 /// contours; hands = MediaPipe Hand Landmarker through the plugin (lighting
 /// only when it is off or has failed); feet = lighting only (no model tracks
@@ -30,7 +33,11 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
     required this.step,
     required int Function() rotationDegrees,
     required Duration interval,
+    SideChoice Function()? sideChoice,
+    bool Function()? framesMirrored,
   })  : _rotationDegrees = rotationDegrees,
+        _sideChoice = sideChoice ?? (() => SideChoice.both),
+        _framesMirrored = framesMirrored ?? (() => false),
         _interval = interval,
         _handsActive = step.usesHands && _config.handTracking,
         _pose = step.usesPose
@@ -63,6 +70,8 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
   final CaptureStep step;
   final MovementCaptureConfig _config;
   final int Function() _rotationDegrees;
+  final SideChoice Function() _sideChoice;
+  final bool Function() _framesMirrored;
   final Duration _interval;
 
   /// Hands step: false once MediaPipe failed 3 times in a row.
@@ -90,6 +99,14 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
     PoseLandmarkType.rightAnkle,
   ];
 
+  /// Sharpness and movement are measured on a small brightness copy every
+  /// `qualitySampleInterval` and reused in between. Only the previous thumb is
+  /// kept (for the movement difference); it is never stored or logged.
+  LumaThumb? _prevThumb;
+  DateTime _lastQualitySample = DateTime.fromMillisecondsSinceEpoch(0);
+  double _sharpness = double.infinity;
+  double _motion = 0;
+
   bool _busy = false;
   DateTime _lastRun = DateTime.fromMillisecondsSinceEpoch(0);
   final List<DateTime> _runTimes = [];
@@ -114,6 +131,7 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
       // Validates the format for every step and copies the bytes.
       final input = _toInputImage(image, rotation);
       final luma = _luma(image);
+      _sampleQuality(image, now);
       final upright = _uprightSize(image, rotation);
       // Like the ML Kit copy above, the hand image must be made before the
       // first await: the camera reuses the buffer after the callback returns.
@@ -142,10 +160,6 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
       var allPose = const <PosePoint>[];
       FaceSnapshot? face;
       double? faceWidth;
-      var contours = const <List<Offset>>[];
-      final boxes = [
-        for (final f in faces) _normalisedRect(f.boundingBox, upright),
-      ];
 
       switch (step) {
         case CaptureStep.fullBody:
@@ -169,15 +183,16 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
             if (faceWidth < _config.faceMinWidthFraction) {
               issues.add(CaptureIssue.faceTooFar);
             }
-            contours = face.contours.values.toList();
           }
         case CaptureStep.hands:
           if (_handsActive) {
-            if (hands.isEmpty) {
-              issues.add(CaptureIssue.noHands);
-            } else if (hands.length < 2 && _config.requireBothHands) {
-              issues.add(CaptureIssue.oneHand);
-            }
+            final handIssue = handSideIssue(
+              choice: _sideChoice(),
+              hands: hands,
+              framesMirrored: _framesMirrored(),
+              requireBoth: _config.requireBothHands,
+            );
+            if (handIssue != null) issues.add(handIssue);
             if (hands.any((h) => h.points.any((p) => !_insidePoint(p)))) {
               issues.add(CaptureIssue.outOfFrame);
             }
@@ -195,11 +210,14 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
         faceCount: faces.length,
         face: face,
         hands: hands,
-        overlay: OverlayFrame(
-          pose: allPose,
-          faces: boxes,
-          faceContours: contours,
-          hands: hands,
+        quality: assessQuality(
+          config: _config,
+          step: step,
+          issues: issues,
+          luma: luma,
+          sharpness: _sharpness,
+          motion: _motion,
+          subjectFraction: faceWidth ?? _bodyHeight(required),
         ),
         metrics: FrameMetrics(
           step: step,
@@ -218,6 +236,38 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
     } finally {
       _busy = false;
     }
+  }
+
+  /// Must run before the first await: it reads the camera buffer.
+  void _sampleQuality(CameraImage image, DateTime now) {
+    if (now.difference(_lastQualitySample) < _config.qualitySampleInterval) {
+      return;
+    }
+    _lastQualitySample = now;
+    final plane = image.planes.first;
+    final isBgra = InputImageFormatValue.fromRawValue(image.format.raw) ==
+        InputImageFormat.bgra8888;
+    final thumb = isBgra
+        ? LumaThumb.fromBgra(plane.bytes,
+            width: image.width,
+            height: image.height,
+            bytesPerRow: plane.bytesPerRow)
+        : LumaThumb.fromLumaPlane(plane.bytes,
+            width: image.width,
+            height: image.height,
+            bytesPerRow: plane.bytesPerRow);
+    _sharpness = thumb.sharpness;
+    _motion = thumb.motionFrom(_prevThumb);
+    _prevThumb = thumb;
+  }
+
+  /// Head-to-ankle span as a share of the frame height, or null when a
+  /// required point was not found.
+  double? _bodyHeight(List<LandmarkPoint> required) {
+    if (required.isEmpty || required.any((p) => p.y < 0)) return null;
+    final ys = [for (final p in required) p.y];
+    return ys.reduce((a, b) => a > b ? a : b) -
+        ys.reduce((a, b) => a < b ? a : b);
   }
 
   RgbaFrame _handImage(CameraImage image, int rotation) {

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../data/native_bridge.dart';
+import '../domain/body_sides.dart';
 import '../domain/camera_choice.dart';
 import '../domain/capture_state.dart';
 import '../domain/config.dart';
@@ -17,7 +18,8 @@ import 'controller.dart';
 import 'customization.dart';
 import 'debug_overlay.dart';
 import 'review_view.dart';
-import 'skeleton_layer.dart';
+import 'side_choice_view.dart';
+import 'quality_status_bar.dart';
 import 'speech_planner.dart';
 import 'voice_guide.dart';
 
@@ -177,12 +179,7 @@ class _MovementCaptureScreenState extends State<MovementCaptureScreen>
       icons: widget.icons,
       error: style.errorColor ?? scheme.error,
       active: style.activeColor ?? scheme.primary,
-      skeleton: SkeletonColors(
-        body: style.skeletonBodyColor ?? scheme.primary,
-        face: style.skeletonFaceColor ?? scheme.tertiary,
-        hand: style.skeletonHandColor ?? scheme.secondary,
-        foot: style.skeletonFootColor ?? scheme.inversePrimary,
-      ),
+      warning: style.warningColor ?? const Color(0xFFFFB300),
     );
     return ListenableBuilder(
       listenable: _controller,
@@ -201,7 +198,7 @@ class _MovementCaptureScreenState extends State<MovementCaptureScreen>
                 controller: _controller,
                 state: state,
                 ui: ui,
-                showDebug: widget.showDebugOverlay,
+                showDebug: widget.showDebugOverlay && _controller.config.showDetails,
                 onClose: () => unawaited(_requestClose()),
                 onDone: _close,
                 voiceGuide: _voiceGuide,
@@ -225,13 +222,13 @@ class _Ui {
     required this.icons,
     required this.error,
     required this.active,
-    required this.skeleton,
+    required this.warning,
   });
   final MovementCaptureStrings strings;
   final MovementCaptureIcons icons;
   final Color error;
   final Color active;
-  final SkeletonColors skeleton;
+  final Color warning;
 }
 
 Future<void> _showCameraSheet(
@@ -357,7 +354,6 @@ class _CaptureBody extends StatelessWidget {
         review: review,
         strings: ui.strings,
         icons: ui.icons,
-        skeletonColors: ui.skeleton,
         activeColor: ui.active,
         onCancel: onClose,
       );
@@ -373,7 +369,7 @@ class _CaptureBody extends StatelessWidget {
             ? ui.active
             : Colors.transparent;
 
-    return Stack(
+    final stack = Stack(
       children: [
         if (cam != null && cam.value.isInitialized)
           Center(
@@ -386,22 +382,6 @@ class _CaptureBody extends StatelessWidget {
                   fit: StackFit.expand,
                   children: [
                     _SafeZoneOverlay(inset: controller.config.safeZoneInset),
-                    if (controller.config.showSkeleton || showDebug)
-                      Transform.flip(
-                        flipX: controller.selectedCamera != null &&
-                            controller.config.overlayFlipFor(
-                                controller.selectedCamera!.kind,
-                                defaultTargetPlatform),
-                        child: SkeletonLayer(
-                          frames: controller.overlay,
-                          colors: ui.skeleton,
-                          minLikelihood:
-                              controller.config.skeletonMinLikelihood,
-                          transition: const Duration(milliseconds: 50),
-                          debugMetrics: showDebug ? controller.metrics : null,
-                          debugBadColor: ui.error,
-                        ),
-                      ),
                   ],
                 ),
               ),
@@ -479,6 +459,34 @@ class _CaptureBody extends StatelessWidget {
             ),
           ),
         if (_panel(context) case final Widget panel) panel,
+        if (state is Checking && controller.awaitingSideChoice)
+          Positioned.fill(
+            child: SideChoiceView(
+              step: controller.currentStep,
+              strings: ui.strings,
+              onChoose: controller.chooseSides,
+              onCancel: onClose,
+            ),
+          ),
+      ],
+    );
+    final showStatus = state is Checking ||
+        state is CountingDown ||
+        (state is Recording && (state as Recording).liveChecks);
+    if (!showStatus) return stack;
+    // The status sits above the picture, never on it.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        QualityStatusBar(
+          status: controller.status,
+          strings: ui.strings,
+          icons: ui.icons,
+          goodColor: ui.active,
+          warningColor: ui.warning,
+          badColor: ui.error,
+        ),
+        Expanded(child: stack),
       ],
     );
   }
@@ -550,6 +558,7 @@ class _CaptureBody extends StatelessWidget {
           ui: ui,
           icon: ui.icons.completed,
           message: s.completed,
+          extra: SideSummary(steps: controller.results, strings: s),
           actions: [_PanelAction(s.done, onDone, primary: true)],
         ),
       _ => null,
@@ -577,10 +586,13 @@ class _TopBanner extends StatelessWidget {
         : theme.textTheme.headlineSmall;
     final s = ui.strings;
     final step = controller.currentStep;
-    final progress = Text(
-      s.stepProgress(controller.stepIndex, controller.stepCount, step),
-      style: theme.textTheme.titleMedium,
-    );
+    // The step counter is a detail: hidden when config.showDetails is off.
+    final progress = controller.config.showDetails
+        ? Text(
+            s.stepProgress(controller.stepIndex, controller.stepCount, step),
+            style: theme.textTheme.titleMedium,
+          )
+        : null;
 
     Widget infoRow(IconData icon, String text) => Padding(
           padding: const EdgeInsets.only(top: 12),
@@ -625,14 +637,18 @@ class _TopBanner extends StatelessWidget {
                 children: [
                   Icon(ui.icons.step(step), size: 28),
                   const SizedBox(width: 12),
-                  Expanded(child: progress),
+                  Expanded(child: progress ?? Text(s.stepTitle(step))),
                 ],
               ),
               const SizedBox(height: 8),
               Text(
                   armed
                       ? s.hintArmedFor(mode)
-                      : s.stepInstructionFor(step, mode),
+                      : step.hasSides &&
+                              controller.sideChoiceFor(step) != SideChoice.both
+                          ? s.sideInstruction(
+                              step, controller.sideChoiceFor(step))
+                          : s.stepInstructionFor(step, mode),
                   style: textStyle),
               if (saved != null && !armed)
                 infoRow(ui.icons.saved, s.stepSaved(saved)),
@@ -648,8 +664,7 @@ class _TopBanner extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              progress,
-              const SizedBox(height: 8),
+              if (progress != null) ...[progress, const SizedBox(height: 8)],
               Text(s.getReady, style: textStyle),
             ],
           ),
@@ -661,8 +676,7 @@ class _TopBanner extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              progress,
-              const SizedBox(height: 8),
+              if (progress != null) ...[progress, const SizedBox(height: 8)],
               Row(
                 children: [
                   Icon(ui.icons.recordingDot, color: ui.error, size: 28),
@@ -854,6 +868,7 @@ class _Panel extends StatelessWidget {
     this.busy = false,
     this.isError = false,
     this.progress,
+    this.extra,
     this.actions = const [],
   });
 
@@ -863,6 +878,7 @@ class _Panel extends StatelessWidget {
   final bool busy;
   final bool isError;
   final double? progress;
+  final Widget? extra;
   final List<_PanelAction> actions;
 
   @override
@@ -934,6 +950,10 @@ class _Panel extends StatelessWidget {
                         textAlign: TextAlign.center,
                         style: theme.textTheme.headlineSmall,
                       ),
+                      if (extra != null) ...[
+                        const SizedBox(height: 24),
+                        extra!,
+                      ],
                       if (actions.isNotEmpty) ...[
                         const SizedBox(height: 32),
                         Wrap(

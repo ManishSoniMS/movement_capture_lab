@@ -15,6 +15,9 @@ enum CaptureStep {
   /// Runs MediaPipe hand tracking (if enabled).
   bool get usesHands => this == CaptureStep.hands;
 
+  /// Steps where the person may scan one side only.
+  bool get hasSides => this == CaptureStep.hands || this == CaptureStep.feet;
+
   /// Produces landmarks.json.
   bool get recordsLandmarks => usesFace || usesHands;
 
