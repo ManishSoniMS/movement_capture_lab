@@ -11,6 +11,7 @@ class QualityStatusBar extends StatelessWidget {
   const QualityStatusBar({
     super.key,
     required this.status,
+    required this.cameraWeak,
     required this.strings,
     required this.icons,
     required this.goodColor,
@@ -19,6 +20,9 @@ class QualityStatusBar extends StatelessWidget {
   });
 
   final ValueListenable<QualityStatus?> status;
+
+  /// Camera resolution or frame rate is below the minimum (checked once).
+  final ValueListenable<bool> cameraWeak;
   final MovementCaptureStrings strings;
   final MovementCaptureIcons icons;
   final Color goodColor;
@@ -30,45 +34,58 @@ class QualityStatusBar extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return ColoredBox(
       color: scheme.inverseSurface,
-      child: ValueListenableBuilder<QualityStatus?>(
-        valueListenable: status,
-        builder: (context, value, _) {
-          final problem = value?.problem;
-          final lines = value == null
-              ? const <Widget>[]
-              : [
-                  _StatusLine(
-                    key: const ValueKey('status-in-frame'),
-                    icon: value.inFrame ? icons.statusGood : icons.statusBad,
-                    text: value.inFrame
-                        ? strings.statusInFrame
-                        : strings.statusNotInFrame,
-                    color: value.inFrame ? goodColor : badColor,
-                  ),
-                  _StatusLine(
-                    key: const ValueKey('status-quality'),
-                    icon: problem == null
-                        ? icons.statusGood
-                        : icons.statusWarning,
-                    text: strings.qualityLine(problem),
-                    color: problem == null ? goodColor : warningColor,
-                  ),
-                ];
-          return ConstrainedBox(
-            // Reserve the height so the picture does not jump when the first
-            // result arrives.
-            constraints: const BoxConstraints(minHeight: 64),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Wrap(
-                spacing: 32,
-                runSpacing: 4,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: lines,
+      child: ValueListenableBuilder<bool>(
+        valueListenable: cameraWeak,
+        builder: (context, weak, _) => ValueListenableBuilder<QualityStatus?>(
+          valueListenable: status,
+          builder: (context, value, _) {
+            final problem = value?.problem;
+            final lines = value == null
+                ? const <Widget>[]
+                : [
+                    _StatusLine(
+                      key: const ValueKey('status-in-frame'),
+                      icon: value.inFrame ? icons.statusGood : icons.statusBad,
+                      text: value.inFrame
+                          ? strings.statusInFrame
+                          : strings.statusNotInFrame,
+                      color: value.inFrame ? goodColor : badColor,
+                    ),
+                    _StatusLine(
+                      key: const ValueKey('status-quality'),
+                      icon: problem == null
+                          ? icons.statusGood
+                          : icons.statusWarning,
+                      text: strings.qualityLine(problem),
+                      color: problem == null ? goodColor : warningColor,
+                    ),
+                  ];
+            return ConstrainedBox(
+              // Reserve the height so the picture does not jump when the first
+              // result arrives.
+              constraints: const BoxConstraints(minHeight: 64),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Wrap(
+                  spacing: 32,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    ...lines,
+                    if (weak)
+                      _StatusLine(
+                        key: const ValueKey('status-camera-weak'),
+                        icon: icons.statusWarning,
+                        text: strings.statusCameraWeak,
+                        color: warningColor,
+                      ),
+                  ],
+                ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

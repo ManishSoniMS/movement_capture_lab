@@ -90,9 +90,10 @@ void main() {
       expect(find.byIcon(Icons.check_circle), findsOneWidget);
       // The marker sits in the Both tile only.
       final marker = tester.getCenter(find.byIcon(Icons.check_circle));
-      expect((marker - tester.getCenter(find.text('Both hands'))).distance,
-          lessThan(
-              (marker - tester.getCenter(find.text('Left hand only'))).distance));
+      expect(
+          (marker - tester.getCenter(find.text('Both hands'))).distance,
+          lessThan((marker - tester.getCenter(find.text('Left hand only')))
+              .distance));
     });
 
     testWidgets('tiles are at least 56 dp and tapping answers', (tester) async {
@@ -120,8 +121,8 @@ void main() {
             sideChoice: SideChoice.leftOnly),
       ]);
       expect(find.text('Left hand — ✓ scanned'), findsOneWidget);
-      expect(find.text('Right hand — not scanned (your choice)'),
-          findsOneWidget);
+      expect(
+          find.text('Right hand — not scanned (your choice)'), findsOneWidget);
     });
 
     testWidgets('right only and both', (tester) async {
@@ -132,8 +133,8 @@ void main() {
             sideChoice: SideChoice.rightOnly),
         CaptureStepResult(step: CaptureStep.feet, analysisId: 'b'),
       ]);
-      expect(find.text('Left hand — not scanned (your choice)'),
-          findsOneWidget);
+      expect(
+          find.text('Left hand — not scanned (your choice)'), findsOneWidget);
       expect(find.text('Right hand — ✓ scanned'), findsOneWidget);
       expect(find.text('Left foot — ✓ scanned'), findsOneWidget);
       expect(find.text('Right foot — ✓ scanned'), findsOneWidget);
@@ -146,8 +147,8 @@ void main() {
             step: CaptureStep.hands, sideChoice: SideChoice.leftOnly),
       ]);
       expect(find.text('Left hand — not scanned'), findsOneWidget);
-      expect(find.text('Right hand — not scanned (your choice)'),
-          findsOneWidget);
+      expect(
+          find.text('Right hand — not scanned (your choice)'), findsOneWidget);
     });
 
     testWidgets('skipped steps and steps without sides are not listed',

@@ -21,6 +21,7 @@ import '../domain/frame_metrics.dart';
 import '../domain/landmark_track.dart';
 import '../domain/quality_timer.dart';
 import '../domain/result.dart';
+import '../domain/camera_quality.dart';
 import '../domain/quality_status.dart';
 import '../domain/quality_summary.dart';
 import '../domain/uploader.dart';
@@ -91,6 +92,12 @@ class MovementCaptureController extends ChangeNotifier {
   /// What the status area shows (in frame? video quality?), held steady for
   /// `qualityHold`. Null while no frames are being analysed.
   final ValueNotifier<QualityStatus?> status = ValueNotifier(null);
+
+  /// True when the active camera's resolution or measured frame rate is below
+  /// the configured minimum. Checked once each time a camera opens.
+  final ValueNotifier<bool> cameraWeak = ValueNotifier(false);
+  FrameRateMeter? _fpsMeter;
+  bool _cameraSizeOk = true;
 
   CaptureState _state = const Initializing();
   CaptureState get state => _state;
@@ -384,6 +391,7 @@ class MovementCaptureController extends ChangeNotifier {
     unawaited(_serial(_teardownImpl));
     metrics.dispose();
     status.dispose();
+    cameraWeak.dispose();
     super.dispose();
   }
 
@@ -502,6 +510,15 @@ class MovementCaptureController extends ChangeNotifier {
       return;
     }
     cam.addListener(_onCameraValue);
+    final size = cam.value.previewSize;
+    _cameraSizeOk = size == null ||
+        cameraIsGoodEnough(
+            config: config,
+            width: size.width.round(),
+            height: size.height.round(),
+            fps: config.minCameraFps);
+    cameraWeak.value = !_cameraSizeOk;
+    _fpsMeter = FrameRateMeter(const Duration(seconds: 2));
     _analyzer = _newAnalyzer();
     await _beginChecking();
   }
@@ -699,8 +716,8 @@ class MovementCaptureController extends ChangeNotifier {
       final track = _track;
       _track = null;
       if (track != null && !track.isEmpty) {
-        landmarks = await _storage.writeLandmarks(
-            jsonEncode(track.toJson(mirrored: _fileMirrored)));
+        landmarks = await _storage
+            .writeLandmarks(jsonEncode(track.toJson(mirrored: _fileMirrored)));
       }
     } on CameraException catch (e) {
       debugPrint('movement_capture: finish failed ${e.code}');
@@ -830,6 +847,10 @@ class MovementCaptureController extends ChangeNotifier {
 
   void _onFrame(CameraImage image) {
     _frameSeenThisPhase = true;
+    final fps = _fpsMeter?.add(DateTime.now());
+    if (fps != null) {
+      cameraWeak.value = !_cameraSizeOk || fps < config.minCameraFps;
+    }
     final analyzer = _analyzer;
     if (analyzer == null || _busyTransition || _transitionQueued || _disposed) {
       return;

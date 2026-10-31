@@ -18,8 +18,12 @@ List<int> _reds(RgbaFrame f) =>
 
 void main() {
   RgbaFrame run(int rotation) => downscaleToRgba(_bgra4x2(),
-      nv21: false, width: 4, height: 2, bytesPerRow: 16,
-      rotationDegrees: rotation, maxSide: 100);
+      nv21: false,
+      width: 4,
+      height: 2,
+      bytesPerRow: 16,
+      rotationDegrees: rotation,
+      maxSide: 100);
 
   // Source (index → position):   0 1 2 3
   //                              4 5 6 7
@@ -73,8 +77,12 @@ void main() {
 
   test('scales so the longest side is maxSide', () {
     final f = downscaleToRgba(Uint8List(1280 * 720 * 4),
-        nv21: false, width: 1280, height: 720, bytesPerRow: 1280 * 4,
-        rotationDegrees: 0, maxSide: 256);
+        nv21: false,
+        width: 1280,
+        height: 720,
+        bytesPerRow: 1280 * 4,
+        rotationDegrees: 0,
+        maxSide: 256);
     expect([f.width, f.height], [256, 144]);
     expect(f.bytes.length, 256 * 144 * 4);
   });

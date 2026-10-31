@@ -198,7 +198,8 @@ class _MovementCaptureScreenState extends State<MovementCaptureScreen>
                 controller: _controller,
                 state: state,
                 ui: ui,
-                showDebug: widget.showDebugOverlay && _controller.config.showDetails,
+                showDebug:
+                    widget.showDebugOverlay && _controller.config.showDetails,
                 onClose: () => unawaited(_requestClose()),
                 onDone: _close,
                 voiceGuide: _voiceGuide,
@@ -480,6 +481,7 @@ class _CaptureBody extends StatelessWidget {
       children: [
         QualityStatusBar(
           status: controller.status,
+          cameraWeak: controller.cameraWeak,
           strings: ui.strings,
           icons: ui.icons,
           goodColor: ui.active,

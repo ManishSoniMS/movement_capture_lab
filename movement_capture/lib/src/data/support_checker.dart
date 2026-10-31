@@ -36,8 +36,8 @@ abstract final class SupportChecker {
     NativeSupportInfo? native;
     String? nativeError;
     try {
-      native = await NativeBridge.supportInfo()
-          .timeout(const Duration(seconds: 5));
+      native =
+          await NativeBridge.supportInfo().timeout(const Duration(seconds: 5));
     } catch (e) {
       nativeError = '$e';
     }

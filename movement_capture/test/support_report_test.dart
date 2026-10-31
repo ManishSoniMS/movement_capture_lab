@@ -59,7 +59,8 @@ void main() {
   test('missing iOS camera description blocks (would crash)', () {
     final r = evaluateSupport(
         platform: 'ios',
-        native: _native(platform: 'ios', os: '17.4', sdk: null, declared: false),
+        native:
+            _native(platform: 'ios', os: '17.4', sdk: null, declared: false),
         cameras: _goodCameras,
         mlKitAvailable: true);
     expect(r.canRun, isFalse);
@@ -68,7 +69,10 @@ void main() {
 
   test('iOS without native info blocks; Android only warns', () {
     final ios = evaluateSupport(
-        platform: 'ios', native: null, cameras: _goodCameras, mlKitAvailable: true);
+        platform: 'ios',
+        native: null,
+        cameras: _goodCameras,
+        mlKitAvailable: true);
     expect(ios.canRun, isFalse);
     expect(ios.has(SupportIssueCode.checkFailed), isTrue);
 
@@ -119,7 +123,8 @@ void main() {
 
     final restricted = evaluateSupport(
         platform: 'ios',
-        native: _native(platform: 'ios', os: '17.0', sdk: null, auth: 'restricted'),
+        native:
+            _native(platform: 'ios', os: '17.0', sdk: null, auth: 'restricted'),
         cameras: _goodCameras,
         mlKitAvailable: true);
     expect(restricted.canRun, isFalse);
@@ -155,7 +160,8 @@ void main() {
     expect(r.has(SupportIssueCode.mlKitUnavailable), isTrue);
   });
 
-  test('low storage is user-fixable; low memory and no USB camera only warn', () {
+  test('low storage is user-fixable; low memory and no USB camera only warn',
+      () {
     final r = evaluateSupport(
         platform: 'android',
         native: _native(free: 50 * 1024 * 1024, ram: 2000000000),
@@ -180,7 +186,10 @@ void main() {
 
   test('describe() and toJson() never throw', () {
     final r = evaluateSupport(
-        platform: 'android', native: null, cameras: null, mlKitAvailable: false);
+        platform: 'android',
+        native: null,
+        cameras: null,
+        mlKitAvailable: false);
     expect(r.describe(), contains('canRun=false'));
     expect(r.toJson()['issues'], isA<List<Object?>>());
   });

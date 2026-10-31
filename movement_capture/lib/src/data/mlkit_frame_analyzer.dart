@@ -297,7 +297,8 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
       debugPrint('movement_capture: hand tracking failed ($_handFailures): $e');
       if (_handFailures >= 3) {
         _handsActive = false;
-        debugPrint('movement_capture: hand tracking switched off for this step');
+        debugPrint(
+            'movement_capture: hand tracking switched off for this step');
       }
       return const [];
     }
@@ -393,7 +394,8 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
       headEulerZ: f.headEulerAngleZ,
       landmarks: {
         for (final e in f.landmarks.entries)
-          if (e.value case final lm?) e.key.name: norm(lm.position.x, lm.position.y),
+          if (e.value case final lm?)
+            e.key.name: norm(lm.position.x, lm.position.y),
       },
       contours: {
         for (final e in f.contours.entries)

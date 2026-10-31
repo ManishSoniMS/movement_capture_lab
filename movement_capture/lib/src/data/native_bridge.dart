@@ -7,7 +7,8 @@ import '../domain/native_support_info.dart';
 
 /// The only Dart code that talks to the plugin's native side.
 abstract final class NativeBridge {
-  static const MethodChannel _channel = MethodChannel('movement_capture/native');
+  static const MethodChannel _channel =
+      MethodChannel('movement_capture/native');
 
   static Future<NativeSupportInfo> supportInfo() async {
     final raw = await _channel.invokeMapMethod<Object?, Object?>('supportInfo');

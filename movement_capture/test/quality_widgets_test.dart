@@ -28,9 +28,11 @@ Widget _host(Widget child) => MaterialApp(
 
 void main() {
   group('status area', () {
-    Future<void> pump(WidgetTester t, QualityStatus? s) async {
+    Future<void> pump(WidgetTester t, QualityStatus? s,
+        {bool weak = false}) async {
       await t.pumpWidget(_host(QualityStatusBar(
         status: ValueNotifier(s),
+        cameraWeak: ValueNotifier(weak),
         strings: _strings,
         icons: _icons,
         goodColor: Colors.green,
@@ -44,6 +46,15 @@ void main() {
       expect(find.text('You are in the frame'), findsOneWidget);
       expect(find.text('Video quality: Good'), findsOneWidget);
       expect(find.byIcon(_icons.statusGood), findsNWidgets(2));
+    });
+
+    testWidgets('weak camera adds its own warning line', (t) async {
+      await pump(t, const QualityStatus(inFrame: true, problem: null),
+          weak: true);
+      expect(
+          find.text("This camera's video is not good enough"), findsOneWidget);
+      await pump(t, const QualityStatus(inFrame: true, problem: null));
+      expect(find.text("This camera's video is not good enough"), findsNothing);
     });
 
     testWidgets('not in frame is red with its own icon', (t) async {

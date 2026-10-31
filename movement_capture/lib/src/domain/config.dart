@@ -46,6 +46,8 @@ class MovementCaptureConfig {
     this.allowUseAnyway = true,
     this.qualityHold = const Duration(milliseconds: 500),
     this.qualitySampleInterval = const Duration(milliseconds: 300),
+    this.minCameraShortSide = 480,
+    this.minCameraFps = 15,
     this.minSharpness = 40,
     this.maxMotion = 10,
     this.faceMaxWidthFraction = 0.7,
@@ -170,6 +172,12 @@ class MovementCaptureConfig {
 
   /// Time between sharpness and movement samples (~3 per second).
   final Duration qualitySampleInterval;
+
+  /// Camera check, done once when a camera opens. UNCONFIRMED defaults: the
+  /// ML team must set them. Shortest side of the stream in pixels, and
+  /// measured frames per second. Below either = weak camera.
+  final int minCameraShortSide;
+  final double minCameraFps;
 
   /// Minimum variance of the Laplacian on the 160 px brightness copy
   /// (squared brightness levels). Below = "blurry".

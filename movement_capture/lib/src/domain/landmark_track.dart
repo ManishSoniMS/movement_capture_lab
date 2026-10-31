@@ -41,7 +41,11 @@ class LandmarkTrack {
       for (final r in BodyRegion.values) r.name: <String, Object?>{},
     };
     for (final p in pose) {
-      regions[p.region.name]![p.type.name] = [_r(p.x), _r(p.y), _r(p.likelihood)];
+      regions[p.region.name]![p.type.name] = [
+        _r(p.x),
+        _r(p.y),
+        _r(p.likelihood)
+      ];
     }
     _frames.add({'t': tMs, 'faces': faceCount, 'regions': regions});
   }

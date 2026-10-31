@@ -169,8 +169,10 @@ void main() {
 
   test('hand issues rank after noFace and before outOfFrame', () {
     final order = CaptureIssue.values;
-    expect(order.indexOf(CaptureIssue.noHands), greaterThan(order.indexOf(CaptureIssue.noFace)));
-    expect(order.indexOf(CaptureIssue.oneHand), lessThan(order.indexOf(CaptureIssue.outOfFrame)));
+    expect(order.indexOf(CaptureIssue.noHands),
+        greaterThan(order.indexOf(CaptureIssue.noFace)));
+    expect(order.indexOf(CaptureIssue.oneHand),
+        lessThan(order.indexOf(CaptureIssue.outOfFrame)));
   });
 
   test('hand issues have default text and icons', () {
@@ -178,7 +180,8 @@ void main() {
     const icons = MovementCaptureIcons();
     expect(strings.issue(CaptureIssue.noHands), isNotEmpty);
     expect(strings.issue(CaptureIssue.oneHand), contains('one hand'));
-    expect(icons.issue(CaptureIssue.noHands), isNot(icons.issue(CaptureIssue.oneHand)));
+    expect(icons.issue(CaptureIssue.noHands),
+        isNot(icons.issue(CaptureIssue.oneHand)));
   });
 
   test('review mirroring matches what the live preview showed', () {

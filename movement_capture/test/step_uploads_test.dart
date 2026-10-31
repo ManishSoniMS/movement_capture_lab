@@ -184,8 +184,7 @@ void main() {
       ..enqueue(_clip(CaptureStep.fullBody, landmarks: true))
       ..enqueue(_clip(CaptureStep.face));
     await uploads.deleteAllFiles();
-    expect(storage.deleted,
-        ['fullBody.mp4', 'fullBody.json', 'face.mp4']);
+    expect(storage.deleted, ['fullBody.mp4', 'fullBody.json', 'face.mp4']);
   });
 
   test('onChanged fires as uploads progress', () async {

@@ -163,3 +163,15 @@
 **Pros/cons:** the picker takes the selection from the host, so the host keeps navigation and the side-choice step stays in the package. Tiles are two flexible rows so all four fit without scrolling. Screen-level detail hiding cannot run under `flutter test` (camera); the quality code does not read `showDetails` (source guard).
 
 **Not verified:** all manual kiosk checks (each scan type end to end, hands/feet side choices, toggle persistence after a real restart, uncluttered camera screen).
+
+## 2026-10-31: Camera check on open (kiosk-03, Step 3 "Camera" row)
+
+**Decisions for the team (top):** `minCameraShortSide` 480 px and `minCameraFps` 15 are **unconfirmed** config defaults; the ML team must set them. Step 6 (record and analyse at the same time) was not changed: the package already streams frames during recording; whether each camera supports it needs a kiosk device.
+
+**Files:** new `domain/camera_quality.dart` (`cameraIsGoodEnough`, `FrameRateMeter`), `config.dart` (two fields), `controller.dart` (`cameraWeak` notifier, size check on open, fps measured over the first 2 s of frames), `quality_status_bar.dart` (third warning line), `customization.dart` (`statusCameraWeak`), `screen.dart`. Tests: new `camera_quality_test.dart`, added case in `quality_widgets_test.dart`.
+
+**Why:** the brief wants "checked once, when the camera opens". Size comes from `previewSize`; fps is measured from the real stream, since the plugin does not report it. Warning only, never blocks.
+
+**Checks:** red phase was a compile failure. 201 package tests pass, package analyze clean, root analyze 3 known infos.
+
+**Not verified:** real fps and previewSize on the built-in and USB cameras.

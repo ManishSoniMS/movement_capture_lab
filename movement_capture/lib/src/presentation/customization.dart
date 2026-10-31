@@ -137,6 +137,7 @@ class MovementCaptureStrings {
         'The video can\'t be shown here, but it was recorded.',
     this.useVideo = 'Use this video',
     this.recordAgain = 'Record again',
+    this.statusCameraWeak = 'This camera\'s video is not good enough',
     this.statusInFrame = 'You are in the frame',
     this.statusNotInFrame = 'You are not in the frame',
     this.statusQualityGood = 'Video quality: Good',
@@ -265,6 +266,7 @@ class MovementCaptureStrings {
   final String reviewUnavailable;
   final String useVideo;
   final String recordAgain;
+  final String statusCameraWeak;
   final String statusInFrame;
   final String statusNotInFrame;
   final String statusQualityGood;

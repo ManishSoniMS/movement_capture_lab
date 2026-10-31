@@ -3,11 +3,26 @@ import 'dart:ui' show Offset, lerpDouble;
 /// MediaPipe hand point names, in model order (21 points).
 const List<String> handPointNames = [
   'wrist',
-  'thumbCmc', 'thumbMcp', 'thumbIp', 'thumbTip',
-  'indexMcp', 'indexPip', 'indexDip', 'indexTip',
-  'middleMcp', 'middlePip', 'middleDip', 'middleTip',
-  'ringMcp', 'ringPip', 'ringDip', 'ringTip',
-  'pinkyMcp', 'pinkyPip', 'pinkyDip', 'pinkyTip',
+  'thumbCmc',
+  'thumbMcp',
+  'thumbIp',
+  'thumbTip',
+  'indexMcp',
+  'indexPip',
+  'indexDip',
+  'indexTip',
+  'middleMcp',
+  'middlePip',
+  'middleDip',
+  'middleTip',
+  'ringMcp',
+  'ringPip',
+  'ringDip',
+  'ringTip',
+  'pinkyMcp',
+  'pinkyPip',
+  'pinkyDip',
+  'pinkyTip',
 ];
 
 /// The standard hand skeleton (21 lines), as index pairs.

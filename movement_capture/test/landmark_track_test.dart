@@ -17,9 +17,11 @@ void main() {
         image: const Size(720, 1280),
         rotationDegrees: 90,
         pose: const [
-          PosePoint(type: PoseJoint.nose, x: 0.123456, y: 0.5, likelihood: 0.99),
+          PosePoint(
+              type: PoseJoint.nose, x: 0.123456, y: 0.5, likelihood: 0.99),
           PosePoint(type: PoseJoint.leftThumb, x: 0.6, y: 0.4, likelihood: 0.8),
-          PosePoint(type: PoseJoint.rightHeel, x: 0.4, y: 0.95, likelihood: 0.7),
+          PosePoint(
+              type: PoseJoint.rightHeel, x: 0.4, y: 0.95, likelihood: 0.7),
         ],
       )
       ..addPose(

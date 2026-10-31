@@ -105,8 +105,9 @@ class SupportReport {
 
   bool has(SupportIssueCode code) => issues.any((i) => i.code == code);
 
-  int get usbCameraCount =>
-      cameras.where((c) => c.lensDirection == CameraLensDirection.external).length;
+  int get usbCameraCount => cameras
+      .where((c) => c.lensDirection == CameraLensDirection.external)
+      .length;
 
   Map<String, Object?> toJson() => {
         'platform': platform,
@@ -132,9 +133,12 @@ class SupportReport {
     final b = StringBuffer()
       ..writeln('movement_capture support: canRun=$canRun readyNow=$readyNow')
       ..writeln('  $platform ${osVersion ?? '?'} · ${deviceModel ?? '?'}')
-      ..writeln('  cameras: ${cameras.map((c) => '${c.name}/${c.lensDirection.name}').join(', ')}')
-      ..writeln('  camera access: ${cameraAuthorization ?? '?'} · ML Kit: $mlKitAvailable')
-      ..writeln('  free: ${freeBytes ?? '?'} B · RAM: ${totalMemoryBytes ?? '?'} B');
+      ..writeln(
+          '  cameras: ${cameras.map((c) => '${c.name}/${c.lensDirection.name}').join(', ')}')
+      ..writeln(
+          '  camera access: ${cameraAuthorization ?? '?'} · ML Kit: $mlKitAvailable')
+      ..writeln(
+          '  free: ${freeBytes ?? '?'} B · RAM: ${totalMemoryBytes ?? '?'} B');
     for (final i in issues) {
       b.writeln('  $i');
     }
@@ -185,12 +189,16 @@ SupportReport evaluateSupport({
   // 2. Native info.
   if (native == null) {
     if (isIOS) {
-      add(SupportIssueCode.checkFailed, SupportSeverity.blocking,
+      add(
+          SupportIssueCode.checkFailed,
+          SupportSeverity.blocking,
           'Native support info unavailable ($nativeError). Cannot confirm '
           'NSCameraUsageDescription; opening the camera could crash the app. '
           'Run `pod install` and rebuild.');
     } else {
-      add(SupportIssueCode.nativeInfoUnavailable, SupportSeverity.warning,
+      add(
+          SupportIssueCode.nativeInfoUnavailable,
+          SupportSeverity.warning,
           'Native support info unavailable ($nativeError). OS version, '
           'manifest permission and storage were not checked.');
     }
@@ -198,13 +206,17 @@ SupportReport evaluateSupport({
     // 3. OS version.
     if (isIOS) {
       if (!_versionAtLeast(native.osVersion, requirements.minIosVersion)) {
-        add(SupportIssueCode.osTooOld, SupportSeverity.blocking,
+        add(
+            SupportIssueCode.osTooOld,
+            SupportSeverity.blocking,
             'iOS ${native.osVersion} is older than '
             '${requirements.minIosVersion.join('.')}.');
       }
     } else if (native.sdkInt != null &&
         native.sdkInt! < requirements.minAndroidSdk) {
-      add(SupportIssueCode.osTooOld, SupportSeverity.blocking,
+      add(
+          SupportIssueCode.osTooOld,
+          SupportSeverity.blocking,
           'Android API ${native.sdkInt} is older than '
           '${requirements.minAndroidSdk}.');
     }
@@ -226,7 +238,9 @@ SupportReport evaluateSupport({
         add(SupportIssueCode.cameraAccessBlocked, SupportSeverity.userFixable,
             'Camera access was denied. The user can allow it in Settings.');
       case 'restricted':
-        add(SupportIssueCode.cameraAccessBlocked, SupportSeverity.blocking,
+        add(
+            SupportIssueCode.cameraAccessBlocked,
+            SupportSeverity.blocking,
             'Camera access is restricted by device policy (parental controls '
             'or MDM). The user cannot change it.');
     }
@@ -262,8 +276,9 @@ SupportReport evaluateSupport({
     final usb = cameras
         .where((c) => c.lensDirection == CameraLensDirection.external)
         .length;
-    final front =
-        cameras.where((c) => c.lensDirection == CameraLensDirection.front).length;
+    final front = cameras
+        .where((c) => c.lensDirection == CameraLensDirection.front)
+        .length;
     if (usb == 0) {
       add(
         SupportIssueCode.noUsbCamera,
@@ -287,7 +302,9 @@ SupportReport evaluateSupport({
 
   // 9b. Hand tracking (hands step only; not blocking).
   if (!handTrackingAvailable) {
-    add(SupportIssueCode.handTrackingUnavailable, SupportSeverity.warning,
+    add(
+        SupportIssueCode.handTrackingUnavailable,
+        SupportSeverity.warning,
         'MediaPipe hand tracking could not load; the hands step will check '
         'lighting only.');
   }
