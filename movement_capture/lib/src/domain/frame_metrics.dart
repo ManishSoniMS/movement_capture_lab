@@ -76,6 +76,7 @@ class FrameCheck {
     this.uprightSize = Size.zero,
     this.rotationDegrees = 0,
     this.quality,
+    this.overlay = OverlayFrame.empty,
     this.pose = const [],
     this.faceCount = 0,
     this.face,
@@ -88,6 +89,10 @@ class FrameCheck {
   /// Size of the upright (rotated) image the normalised points refer to.
   final Size uprightSize;
   final int rotationDegrees;
+
+  /// What the skeleton layer draws for this frame: body and hand marks,
+  /// never the face.
+  final OverlayFrame overlay;
 
   /// In-frame verdict for this frame plus the lighting, sharpness, movement
   /// and distance checks. Sharpness and movement are re-measured only every

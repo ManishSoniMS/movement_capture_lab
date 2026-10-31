@@ -202,4 +202,15 @@ void main() {
     expect(MovementCaptureConfig(reviewBeforeUpload: false).reviewBeforeUpload,
         isFalse);
   });
+
+  test('tracking marks and out-of-frame stop defaults', () {
+    final c = MovementCaptureConfig();
+    expect(c.showSkeleton, isTrue);
+    expect(c.skeletonMinLikelihood, 0.2);
+    expect(c.stopWhenOutOfFrame, isFalse);
+    expect(c.outOfFrameStopAfter, const Duration(seconds: 2));
+    // Unchanged defaults the brief says not to touch.
+    expect(c.blockOnPoorQuality, isFalse);
+    expect(c.showDetails, isTrue);
+  });
 }

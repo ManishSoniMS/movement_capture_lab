@@ -140,6 +140,12 @@ class MovementCaptureStrings {
     this.statusCameraWeak = 'This camera\'s video is not good enough',
     this.statusInFrame = 'You are in the frame',
     this.statusNotInFrame = 'You are not in the frame',
+    this.outOfFrameWarningTemplate =
+        'Please come back into the frame — stopping in {n}',
+    this.outOfFrameStopped =
+        'Recording stopped — you moved out of the frame. It will start again when you are back in place.',
+    this.outOfFrameStopUnavailable = 'Auto-stop is not available for this scan',
+    this.voiceComeBack = 'Please come back into the frame.',
     this.statusQualityGood = 'Video quality: Good',
     this.statusQualityTemplate = 'Video quality: {problem}',
     this.problemTooDark = 'Too dark',
@@ -269,6 +275,14 @@ class MovementCaptureStrings {
   final String statusCameraWeak;
   final String statusInFrame;
   final String statusNotInFrame;
+
+  /// "Stop recording if out of frame": countdown line (`{n}` = seconds left),
+  /// the banner after a stop, the notice on a step that cannot use the
+  /// switch (feet), and the spoken prompt.
+  final String outOfFrameWarningTemplate;
+  final String outOfFrameStopped;
+  final String outOfFrameStopUnavailable;
+  final String voiceComeBack;
   final String statusQualityGood;
 
   /// `{problem}` is replaced by the matching `problem…` text.
@@ -358,6 +372,9 @@ class MovementCaptureStrings {
             '{problem}', problemText(summary.worstProblem!).toLowerCase()),
         null => summaryGoodTitle,
       };
+
+  String outOfFrameWarning(int n) =>
+      outOfFrameWarningTemplate.replaceAll('{n}', '$n');
 
   String voiceStartingIn(int n) =>
       voiceStartingInTemplate.replaceAll('{n}', '$n');
@@ -491,6 +508,7 @@ class MovementCaptureIcons {
     this.useVideo = Icons.check,
     this.statusGood = Icons.check_circle,
     this.statusWarning = Icons.warning_amber_rounded,
+    this.comeBack = Icons.person_search,
     this.statusBad = Icons.cancel,
     this.play = Icons.play_arrow,
     this.pause = Icons.pause,
@@ -529,6 +547,9 @@ class MovementCaptureIcons {
   final IconData useVideo;
   final IconData statusGood;
   final IconData statusWarning;
+
+  /// Shown with the "come back into the frame" countdown.
+  final IconData comeBack;
   final IconData statusBad;
   final IconData play;
   final IconData pause;
@@ -563,6 +584,9 @@ class MovementCaptureStyle {
     this.errorColor,
     this.activeColor,
     this.warningColor,
+    this.skeletonBodyColor,
+    this.skeletonHandColor,
+    this.skeletonFootColor,
   });
 
   /// Default: colorScheme.error.
@@ -574,4 +598,10 @@ class MovementCaptureStyle {
   /// Amber "can be better" colour in the status area. Default: an amber that
   /// reads on the dark status bar.
   final Color? warningColor;
+
+  /// Tracking-mark colours. Defaults: primary, secondary, inversePrimary.
+  /// There is no face colour: nothing is drawn on the face.
+  final Color? skeletonBodyColor;
+  final Color? skeletonHandColor;
+  final Color? skeletonFootColor;
 }

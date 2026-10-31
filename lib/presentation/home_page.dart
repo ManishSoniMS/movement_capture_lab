@@ -36,6 +36,9 @@ class _HomePageState extends State<HomePage> {
     _store.loadShowCameraDetails().then((v) {
       if (mounted) setState(() => _s.showCameraDetails = v);
     });
+    _store.loadStopWhenOutOfFrame().then((v) {
+      if (mounted) setState(() => _s.stopWhenOutOfFrame = v);
+    });
   }
 
   Future<void> _runSupportCheck() async {
@@ -286,8 +289,7 @@ class _HomePageState extends State<HomePage> {
               items: const ['en-IN', 'hi-IN', 'bn-IN', 'kn-IN']
                   .map((l) => DropdownMenuItem(value: l, child: Text(l)))
                   .toList(),
-              onChanged: (v) =>
-                  setState(() => _s.voiceLanguage = v ?? 'en-IN'),
+              onChanged: (v) => setState(() => _s.voiceLanguage = v ?? 'en-IN'),
             ),
           ),
           const _Section('Camera'),
@@ -407,6 +409,30 @@ class _HomePageState extends State<HomePage> {
                 'Off: the status area warns and the operator decides'),
             value: _s.blockOnPoorQuality,
             onChanged: (v) => setState(() => _s.blockOnPoorQuality = v),
+          ),
+          SwitchListTile(
+            key: const ValueKey('stop-when-out-of-frame'),
+            title: const Text('Stop recording if out of frame'),
+            // Block on poor quality already stops on any problem, this
+            // included: show the switch on and locked.
+            subtitle: Text(_s.blockOnPoorQuality
+                ? 'Included in Block on poor quality'
+                : 'Off: leaving the frame does not stop the recording'),
+            value: _s.blockOnPoorQuality || _s.stopWhenOutOfFrame,
+            onChanged: _s.blockOnPoorQuality
+                ? null
+                : (v) {
+                    setState(() => _s.stopWhenOutOfFrame = v);
+                    _store.saveStopWhenOutOfFrame(v);
+                  },
+          ),
+          SwitchListTile(
+            key: const ValueKey('show-tracking-marks'),
+            title: const Text('Show tracking marks'),
+            subtitle: const Text(
+                'Body and hand points on the picture. Never the face'),
+            value: _s.showSkeleton,
+            onChanged: (v) => setState(() => _s.showSkeleton = v),
           ),
           SwitchListTile(
             title: const Text('Debug overlay'),

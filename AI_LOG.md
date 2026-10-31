@@ -175,3 +175,19 @@
 **Checks:** red phase was a compile failure. 201 package tests pass, package analyze clean, root analyze 3 known infos.
 
 **Not verified:** real fps and previewSize on the built-in and USB cameras.
+
+## 2026-10-31: Tracking marks back (not on the face) and "Stop recording if out of frame" (kiosk-05)
+
+**Decisions for the team (top):** (1) `outOfFrameStopAfter` 2 s is **unconfirmed**. (2) The **feet step tracks nothing**, so the auto-stop cannot apply there and the marks for legs and feet come only from the full-body skeleton. The team may want to revisit feet tracking. (3) With `blockOnPoorQuality` on, the new switch is shown on and locked in the lab (it is included).
+
+**Files:** restored from `098981c` (not reverting `9198c91`): `skeleton_layer.dart` (face boxes, contours and face colour removed), `review_samples.dart`, `review_samples_test.dart`, `OverlayFrame` in `pose_topology.dart` (now pose + hands only), `FrameCheck.overlay`, `showSkeleton`/`skeletonMinLikelihood`, controller `overlay` notifier and review samples, `screen.dart`, `review_view.dart`, skeleton colours in `MovementCaptureStyle`. New: `domain/overlay_builder.dart` (drops face points, keeps only the chosen hand via `personSide`), `domain/out_of_frame.dart` (per-step rule, `StopRule`), `domain/out_of_frame_timer.dart`. Changed: `config.dart`, `capture_state.dart` (`Checking.interruptedOutOfFrame`, `Reviewing.samples`), `controller.dart` (feeds the timer, calls the existing `_abortRecordingImpl` through `_serial`; countdown cancel reuses `QualityTimer` fed only the out-of-frame issue), `quality_status_bar.dart` (warning line, feet notice), `customization.dart` (4 strings, `comeBack` icon, 3 colours), `speech_planner.dart` (come-back prompt, repeats every `issueRepeat`). Lab: `lab_settings.dart`, `settings_store.dart`, `prefs_settings_store.dart`, `home_page.dart` (two switches, summary and results log carry them). Tests: new `overlay_builder_test`, `out_of_frame_test`, `out_of_frame_timer_test`, `tracking_marks_test`, `readme_config_test`; added cases to `config_test`, `pose_topology_test`, `speech_planner_test`, `quality_widgets_test`, lab `settings_store_test`.
+
+**Why this approach:** the face is excluded in one pure function (`buildOverlay`), so live and review share it and the painter has no face code. Out-of-frame is read from the whole issue set, not `topIssue`, because "several people" outranks "no person". One abort path, as required.
+
+**Preview cost:** `SkeletonLayer` already has its own `RepaintBoundary` and passes its `AnimationController` as the painter's `repaint:`. The screen never listens to `overlay`, so a new frame repaints only that layer and does not rebuild `CameraPreview`. Source-guarded in `tracking_marks_test`. Nothing was changed there.
+
+**Pros/cons:** the controller only wires pure, tested parts. Cost: controller flows cannot run under `flutter test` (no camera gateway). The tests for the rule and timer were written together with the code, so I did not see them fail first; the lab test did fail first (compile error on the missing members).
+
+**Checks:** package 241 tests pass, package analyze clean; lab 6 tests pass, root analyze has the 3 known infos.
+
+**Not run (needs a device):** skeleton alignment on built-in and USB camera with legs and feet points; right hand only, mirrored and unmirrored; no face marks live or in review; review playback sync; switch on: out and back within 2 s continues, out for good stops, deletes and restarts when back, repeated until `NeedsOperator`; preview frame rate with marks on, on the lowest-end device.

@@ -1,3 +1,7 @@
+import 'dart:ui' show lerpDouble;
+
+import 'hand_topology.dart';
+
 /// The 33 ML Kit pose points. Names match `PoseLandmarkType` exactly, so the
 /// data layer maps by name and `domain` stays free of ML Kit.
 enum PoseJoint {
@@ -157,4 +161,49 @@ class PosePoint {
   final double likelihood;
 
   BodyRegion get region => poseRegions[type]!;
+}
+
+/// What the overlay draws for one analysed frame.
+///
+/// There are deliberately no face boxes or face contours: the face is never
+/// marked (DECISIONS: marks removed for the face only). Face data still feeds
+/// the quality checks and `landmarks.json`, just not the drawing.
+class OverlayFrame {
+  const OverlayFrame({
+    this.pose = const [],
+    this.hands = const [],
+  });
+
+  static const OverlayFrame empty = OverlayFrame();
+
+  /// Body pose points to draw (up to 33 minus the face points).
+  final List<PosePoint> pose;
+
+  /// Hands step only: tracked hands (21 points each).
+  final List<HandSnapshot> hands;
+
+  /// Positions glide from [a] to [b]. Points new in [b] appear at once.
+  static OverlayFrame lerp(OverlayFrame? a, OverlayFrame b, double t) {
+    if (a == null || t >= 1) return b;
+    final previous = {for (final p in a.pose) p.type: p};
+    final pose = [
+      for (final p in b.pose)
+        if (previous[p.type] case final from?)
+          PosePoint(
+            type: p.type,
+            x: lerpDouble(from.x, p.x, t)!,
+            y: lerpDouble(from.y, p.y, t)!,
+            likelihood: p.likelihood,
+          )
+        else
+          p,
+    ];
+    final hands = a.hands.length == b.hands.length
+        ? [
+            for (var i = 0; i < b.hands.length; i++)
+              HandSnapshot.lerp(a.hands[i], b.hands[i], t),
+          ]
+        : b.hands;
+    return OverlayFrame(pose: pose, hands: hands);
+  }
 }

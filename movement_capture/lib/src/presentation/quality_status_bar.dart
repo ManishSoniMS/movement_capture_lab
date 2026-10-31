@@ -17,6 +17,8 @@ class QualityStatusBar extends StatelessWidget {
     required this.goodColor,
     required this.warningColor,
     required this.badColor,
+    this.outOfFrameWarning,
+    this.stopUnavailable = false,
   });
 
   final ValueListenable<QualityStatus?> status;
@@ -28,6 +30,13 @@ class QualityStatusBar extends StatelessWidget {
   final Color goodColor;
   final Color warningColor;
   final Color badColor;
+
+  /// Time left before "Stop recording if out of frame" stops the recording,
+  /// or null (no warning). Shown as a large line, never on the picture.
+  final ValueListenable<Duration?>? outOfFrameWarning;
+
+  /// The switch is on but this step cannot use it (feet): small notice.
+  final bool stopUnavailable;
 
   @override
   Widget build(BuildContext context) {
@@ -60,6 +69,32 @@ class QualityStatusBar extends StatelessWidget {
                       color: problem == null ? goodColor : warningColor,
                     ),
                   ];
+            final warning = outOfFrameWarning;
+            final extra = <Widget>[
+              if (warning != null)
+                ValueListenableBuilder<Duration?>(
+                  valueListenable: warning,
+                  builder: (context, left, _) {
+                    if (left == null) return const SizedBox.shrink();
+                    final n = (left.inMilliseconds / 1000).ceil();
+                    return _StatusLine(
+                      key: const ValueKey('status-out-of-frame'),
+                      icon: icons.comeBack,
+                      text: strings.outOfFrameWarning(n < 1 ? 1 : n),
+                      color: badColor,
+                      large: true,
+                    );
+                  },
+                ),
+              if (stopUnavailable)
+                _StatusLine(
+                  key: const ValueKey('status-stop-unavailable'),
+                  icon: icons.statusWarning,
+                  text: strings.outOfFrameStopUnavailable,
+                  color: warningColor,
+                  small: true,
+                ),
+            ];
             return ConstrainedBox(
               // Reserve the height so the picture does not jump when the first
               // result arrives.
@@ -73,6 +108,7 @@ class QualityStatusBar extends StatelessWidget {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     ...lines,
+                    ...extra,
                     if (weak)
                       _StatusLine(
                         key: const ValueKey('status-camera-weak'),
@@ -97,11 +133,15 @@ class _StatusLine extends StatelessWidget {
     required this.icon,
     required this.text,
     required this.color,
+    this.large = false,
+    this.small = false,
   });
 
   final IconData icon;
   final String text;
   final Color color;
+  final bool large;
+  final bool small;
 
   @override
   Widget build(BuildContext context) {
@@ -109,7 +149,7 @@ class _StatusLine extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 32, color: color),
+        Icon(icon, size: small ? 24 : (large ? 40 : 32), color: color),
         const SizedBox(width: 12),
         // Simple fade when the sentence changes; nothing else animates.
         Flexible(
@@ -118,7 +158,11 @@ class _StatusLine extends StatelessWidget {
           child: Text(
             text,
             key: ValueKey(text),
-            style: theme.textTheme.headlineSmall
+            style: (small
+                    ? theme.textTheme.titleMedium
+                    : large
+                        ? theme.textTheme.headlineMedium
+                        : theme.textTheme.headlineSmall)
                 ?.copyWith(color: theme.colorScheme.onInverseSurface),
           ),
         )),

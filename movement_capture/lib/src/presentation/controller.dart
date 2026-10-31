@@ -19,8 +19,12 @@ import '../domain/config.dart';
 import '../domain/frame_analyzer.dart';
 import '../domain/frame_metrics.dart';
 import '../domain/landmark_track.dart';
+import '../domain/out_of_frame.dart';
+import '../domain/out_of_frame_timer.dart';
+import '../domain/pose_topology.dart';
 import '../domain/quality_timer.dart';
 import '../domain/result.dart';
+import '../domain/review_samples.dart';
 import '../domain/camera_quality.dart';
 import '../domain/quality_status.dart';
 import '../domain/quality_summary.dart';
@@ -49,6 +53,10 @@ class MovementCaptureController extends ChangeNotifier {
         _analyzerFactory = analyzerFactory,
         _quality = QualityTimer(grace: config.violationGrace),
         _statusTracker = QualityStatusTracker(config.qualityHold),
+        _outOfFrame = OutOfFrameTimer(
+          grace: config.violationGrace,
+          stopAfter: config.outOfFrameStopAfter,
+        ),
         steps = List.unmodifiable(config.effectiveSteps),
         sessionId = _newSessionId(),
         analysisInterval =
@@ -71,6 +79,7 @@ class MovementCaptureController extends ChangeNotifier {
   final FrameAnalyzerFactory _analyzerFactory;
   final QualityTimer _quality;
   final QualityStatusTracker _statusTracker;
+  final OutOfFrameTimer _outOfFrame;
   final SerialQueue _queue = SerialQueue();
   late final StepUploads _uploads;
 
@@ -92,6 +101,22 @@ class MovementCaptureController extends ChangeNotifier {
   /// What the status area shows (in frame? video quality?), held steady for
   /// `qualityHold`. Null while no frames are being analysed.
   final ValueNotifier<QualityStatus?> status = ValueNotifier(null);
+
+  /// What the skeleton layer draws (body and hand marks, never the face).
+  /// Null = draw nothing. Only the layer listens, so a new frame repaints it
+  /// and does not rebuild the camera preview.
+  final ValueNotifier<OverlayFrame?> overlay = ValueNotifier(null);
+
+  /// "Stop recording if out of frame": time left before the recording stops,
+  /// or null when there is no warning. Cleared on every phase change.
+  final ValueNotifier<Duration?> outOfFrameWarning = ValueNotifier(null);
+
+  /// True when the switch is on but this step cannot use it (feet): the
+  /// screen shows a small notice.
+  bool get outOfFrameStopUnavailable =>
+      config.stopWhenOutOfFrame &&
+      !config.blockOnPoorQuality &&
+      !stepSupportsOutOfFrameStop(currentStep);
 
   /// True when the active camera's resolution or measured frame rate is below
   /// the configured minimum. Checked once each time a camera opens.
@@ -221,6 +246,7 @@ class MovementCaptureController extends ChangeNotifier {
   MovementClip? _pendingClip; // recorded, waiting for review
   final Map<CaptureStep, int> _retakes = {};
   final List<QualitySample> _qualitySamples = [];
+  final List<TimedOverlay> _reviewSamples = [];
 
   static const Set<String> _permissionCodes = {
     'CameraAccessDenied',
@@ -317,6 +343,7 @@ class MovementCaptureController extends ChangeNotifier {
         final clip = _pendingClip;
         _pendingClip = null;
         _qualitySamples.clear();
+        _reviewSamples.clear();
         if (clip == null) return;
         _uploads.enqueue(clip);
         await _advanceImpl(saved: true); // reopens the camera if needed
@@ -328,6 +355,7 @@ class MovementCaptureController extends ChangeNotifier {
         final clip = _pendingClip;
         _pendingClip = null;
         _qualitySamples.clear();
+        _reviewSamples.clear();
         if (clip != null) await _deleteClipFiles(clip);
         _retakes[currentStep] = (_retakes[currentStep] ?? 0) + 1;
         _restarts = 0;
@@ -391,6 +419,8 @@ class MovementCaptureController extends ChangeNotifier {
     unawaited(_serial(_teardownImpl));
     metrics.dispose();
     status.dispose();
+    overlay.dispose();
+    outOfFrameWarning.dispose();
     cameraWeak.dispose();
     super.dispose();
   }
@@ -546,6 +576,7 @@ class MovementCaptureController extends ChangeNotifier {
   Future<void> _beginChecking({
     CaptureIssue? interruptedBy,
     bool armed = false,
+    bool outOfFrameStop = false,
   }) async {
     final cam = _camera;
     if (cam == null || _disposed) return;
@@ -554,6 +585,7 @@ class MovementCaptureController extends ChangeNotifier {
       issue: interruptedBy,
       armed: armed,
       interrupted: interruptedBy != null,
+      interruptedOutOfFrame: outOfFrameStop,
     ));
     try {
       if (!cam.value.isStreamingImages) await cam.startImageStream(_onFrame);
@@ -629,6 +661,7 @@ class MovementCaptureController extends ChangeNotifier {
           ? LandmarkTrack(sessionId: sessionId, step: currentStep)
           : null;
       _qualitySamples.clear();
+      _reviewSamples.clear();
       final total = config.durationFor(currentStep);
       _recordClock
         ..reset()
@@ -665,7 +698,11 @@ class MovementCaptureController extends ChangeNotifier {
     }
   }
 
-  Future<void> _abortRecordingImpl(CaptureIssue issue, int epoch) async {
+  Future<void> _abortRecordingImpl(
+    CaptureIssue issue,
+    int epoch, {
+    bool outOfFrameStop = false,
+  }) async {
     _transitionQueued = false;
     final cam = _camera;
     if (_disposed || cam == null || epoch != _epoch || _state is! Recording) {
@@ -676,6 +713,7 @@ class MovementCaptureController extends ChangeNotifier {
       _stopRecordingTimers();
       _track = null;
       _qualitySamples.clear();
+      _reviewSamples.clear();
       final raw = await cam.stopVideoRecording();
       await _storage.deletePath(raw.path);
       _restarts++;
@@ -694,7 +732,11 @@ class MovementCaptureController extends ChangeNotifier {
       _setState(NeedsOperator(issue));
       return; // no stream runs now; "Try again" restarts it
     }
-    await _beginChecking(interruptedBy: issue, armed: true);
+    await _beginChecking(
+      interruptedBy: issue,
+      armed: true,
+      outOfFrameStop: outOfFrameStop,
+    );
   }
 
   Future<void> _finishRecordingImpl(int epoch) async {
@@ -769,6 +811,7 @@ class MovementCaptureController extends ChangeNotifier {
     if (_disposed) return; // teardown deletes the pending clip
     _setState(Reviewing(
       video: savedVideo,
+      samples: List.unmodifiable(_reviewSamples),
       quality: QualitySummary.from(
         _qualitySamples,
         durationMs: _recordClock.elapsedMilliseconds,
@@ -882,9 +925,27 @@ class MovementCaptureController extends ChangeNotifier {
       final shown = _statusTracker.feed(reading, check.at);
       if (shown != status.value) status.value = shown;
     }
-    // Poor quality only stops the capture when the host asked for that.
+    if (config.showSkeleton) overlay.value = check.overlay;
+    // What may stop the capture depends on the two switches (see StopRule).
+    final rule = stopRuleFor(
+      blockOnPoorQuality: config.blockOnPoorQuality,
+      stopWhenOutOfFrame: config.stopWhenOutOfFrame,
+    );
+    final outOfFrame = rule == StopRule.none
+        ? null
+        : outOfFrameIssue(
+            check.issues,
+            step: currentStep,
+            sideChoice: sideChoiceFor(currentStep),
+            requireBothHands: config.requireBothHands,
+          );
     final r = _quality.feed(
-        config.blockOnPoorQuality ? check.topIssue : null, check.at);
+        switch (rule) {
+          StopRule.anyIssue => check.topIssue,
+          StopRule.outOfFrameOnly => outOfFrame,
+          StopRule.none => null,
+        },
+        check.at);
 
     switch (_state) {
       case final Checking s:
@@ -894,6 +955,7 @@ class MovementCaptureController extends ChangeNotifier {
               issue: r.lastIssue,
               armed: s.armed,
               interrupted: s.interrupted,
+              interruptedOutOfFrame: s.interruptedOutOfFrame,
             ));
           }
         } else if (s.issue != null && r.goodFor >= config.violationGrace) {
@@ -917,11 +979,32 @@ class MovementCaptureController extends ChangeNotifier {
             problems: reading.problems,
           ));
         }
-        if (r.confirmedBad && !_transitionQueued) {
+        if (config.reviewBeforeUpload && config.showSkeleton) {
+          _reviewSamples.add(
+              TimedOverlay(_recordClock.elapsedMilliseconds, check.overlay));
+        }
+        if (rule == StopRule.anyIssue && r.confirmedBad && !_transitionQueued) {
           _transitionQueued = true;
           final issue = r.lastIssue!;
           final epoch = _epoch;
           unawaited(_serial(() => _abortRecordingImpl(issue, epoch)));
+        } else if (rule == StopRule.outOfFrameOnly) {
+          // Same abort path as above, only the trigger and the banner differ.
+          switch (_outOfFrame.feed(outOfFrame, check.at)) {
+            case OutOfFrameNone():
+              if (outOfFrameWarning.value != null) {
+                outOfFrameWarning.value = null;
+              }
+            case OutOfFrameWarning(:final timeLeft):
+              outOfFrameWarning.value = timeLeft;
+            case OutOfFrameStop(:final issue):
+              if (!_transitionQueued) {
+                _transitionQueued = true;
+                final epoch = _epoch;
+                unawaited(_serial(() =>
+                    _abortRecordingImpl(issue, epoch, outOfFrameStop: true)));
+              }
+          }
         }
       default:
         break;
@@ -984,6 +1067,7 @@ class MovementCaptureController extends ChangeNotifier {
         _liveChecks = false;
         _track = null; // a partial track would mislead the server
         _qualitySamples.clear();
+        _reviewSamples.clear();
         _setState(Recording(
           elapsed: s.elapsed,
           total: s.total,
@@ -1002,6 +1086,8 @@ class MovementCaptureController extends ChangeNotifier {
   void _newPhase() {
     _epoch++;
     _quality.reset();
+    _outOfFrame.reset();
+    if (outOfFrameWarning.value != null) outOfFrameWarning.value = null;
     _frameSeenThisPhase = false;
     _frameWatchdog?.cancel();
     _frameWatchdog = null;
@@ -1052,7 +1138,10 @@ class MovementCaptureController extends ChangeNotifier {
   }
 
   Future<void> _releaseCamera() async {
-    if (!_disposed) _clearStatus();
+    if (!_disposed) {
+      _clearStatus();
+      overlay.value = null;
+    }
     _frameWatchdog?.cancel();
     final cam = _camera;
     _camera = null;
@@ -1099,7 +1188,10 @@ class MovementCaptureController extends ChangeNotifier {
     final analysing = next is Checking ||
         next is CountingDown ||
         (next is Recording && next.liveChecks);
-    if (!analysing) _clearStatus();
+    if (!analysing) {
+      _clearStatus();
+      if (overlay.value != null) overlay.value = null;
+    }
     notifyListeners();
   }
 

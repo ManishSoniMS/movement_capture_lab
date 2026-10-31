@@ -42,6 +42,10 @@ class MovementCaptureConfig {
     this.allowRecordingWithoutLiveChecks = true,
     this.reviewBeforeUpload = true,
     this.blockOnPoorQuality = false,
+    this.stopWhenOutOfFrame = false,
+    this.outOfFrameStopAfter = const Duration(seconds: 2),
+    this.showSkeleton = true,
+    this.skeletonMinLikelihood = 0.2,
     this.showDetails = true,
     this.allowUseAnyway = true,
     this.qualityHold = const Duration(milliseconds: 500),
@@ -153,6 +157,29 @@ class MovementCaptureConfig {
   /// aborts a recording, as the strict flow did. false (default) = the status
   /// area shows the problem and the patient or operator decides.
   final bool blockOnPoorQuality;
+
+  /// true = if the subject leaves the frame during recording for longer than
+  /// [outOfFrameStopAfter], the recording stops, the clip is deleted and the
+  /// step restarts when the subject is back (counts toward `maxRestarts`).
+  /// During the countdown it cancels the countdown. Only out-of-frame issues
+  /// count (see `countsAsOutOfFrame`); other problems are untouched. Has no
+  /// effect when [blockOnPoorQuality] is on (that already stops on any issue)
+  /// or on the feet step (nothing tracks feet). Default off.
+  final bool stopWhenOutOfFrame;
+
+  /// How long the subject may be out of frame while recording before it stops,
+  /// counted from the first frame out. UNCONFIRMED: the team must set this.
+  /// The on-screen warning appears after [violationGrace].
+  final Duration outOfFrameStopAfter;
+
+  /// Draw the tracked marks on the preview: body skeleton (arms, legs, feet
+  /// points) and hand points. Never the face. Independent of [showDetails]
+  /// and of the debug overlay.
+  final bool showSkeleton;
+
+  /// Points below this likelihood are not drawn; up to 0.7 they are drawn
+  /// faded. The quality checks still use [minLandmarkLikelihood].
+  final double skeletonMinLikelihood;
 
   /// Shows the technical details on the camera screen: step counter and
   /// live readouts. Hiding only hides: the quality checks keep running and

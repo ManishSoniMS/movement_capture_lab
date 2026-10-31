@@ -31,6 +31,13 @@ class LabSettings {
   bool debugOverlay = true;
   bool blockOnPoorQuality = false;
 
+  /// Stop recording if the subject leaves the frame. Persisted by the home
+  /// page through a SettingsStore.
+  bool stopWhenOutOfFrame = false;
+
+  /// Tracking marks (body skeleton and hand points, never the face).
+  bool showSkeleton = true;
+
   /// One scan type per session; nothing is pre-selected.
   final ScanSelection scan = ScanSelection();
 
@@ -81,6 +88,8 @@ class LabSettings {
         orientation: orientation,
         allowRecordingWithoutLiveChecks: allowNoLiveChecks,
         blockOnPoorQuality: blockOnPoorQuality,
+        stopWhenOutOfFrame: stopWhenOutOfFrame,
+        showSkeleton: showSkeleton,
         safeZoneInset: safeZoneInset,
         minLandmarkLikelihood: minLikelihood,
         minMeanLuma: minLuma.round(),
@@ -105,6 +114,7 @@ class LabSettings {
       'interval=${analysisIntervalMs < 1 ? 'auto' : '${analysisIntervalMs.round()}ms'} '
       'mirror(usb/front/back)=${mirrorExternal ?? 'auto'}/${mirrorFront ?? 'auto'}/${mirrorBack ?? 'auto'} '
       'orientation=${orientation.name} noLiveChecks=$allowNoLiveChecks blockOnPoorQuality=$blockOnPoorQuality '
+      'stopOutOfFrame=$stopWhenOutOfFrame marks=$showSkeleton '
       'scan=${scan.selected?.name ?? 'none'} details=$showCameraDetails '
       'closeUp=${closeUpDurationS.round()}s feetBack=$feetUseBackCamera '
       'hands=$handTracking/${requireBothHands ? 'both' : 'one'} '

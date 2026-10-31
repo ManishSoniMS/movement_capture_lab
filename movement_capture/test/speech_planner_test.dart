@@ -136,4 +136,27 @@ void main() {
     expect(p.next(snap(review), at(0)), strings.voiceReview);
     expect(p.next(snap(review), at(500)), isNull);
   });
+
+  group('out-of-frame warning', () {
+    SpeechSnapshot warn(Recording r, {bool on = true}) => SpeechSnapshot(
+        state: r,
+        step: CaptureStep.fullBody,
+        stepIndex: 0,
+        outOfFrameWarning: on);
+
+    test('speaks once, repeats only after issueRepeat, then goes quiet', () {
+      final p = SpeechPlanner(strings: strings, mode: CaptureMode.selfGuided);
+      expect(p.next(warn(rec(3)), at(0)), strings.voiceComeBack);
+      expect(p.next(warn(rec(3)), at(500)), isNull);
+      expect(p.next(warn(rec(4)), at(5900)), isNull);
+      expect(p.next(warn(rec(5)), at(6000)), strings.voiceComeBack);
+      expect(p.next(warn(rec(5), on: false), at(6100)),
+          strings.voiceRecording); // warning cleared
+    });
+
+    test('no warning, no prompt', () {
+      final p = SpeechPlanner(strings: strings, mode: CaptureMode.selfGuided);
+      expect(p.next(warn(rec(1), on: false), at(0)), strings.voiceRecording);
+    });
+  });
 }

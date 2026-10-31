@@ -35,7 +35,7 @@ Android 7+ (API 24) and iOS 15.5+. It needs a real device: the camera and ML Kit
 | Camera             | Rotation for analysis (Auto by default), resolution, mirroring (Auto/On/Off), orientation, last chosen camera |
 | Framing / Lighting | Live-tunable thresholds                                                                              |
 | Upload             | Mock (succeeds) · Mock (always fails) · Keep clip for inspection · Real HTTP endpoint                |
-| Tools              | Block on poor quality, Debug overlay, Copy settings, Purge cache, Delete inspection clips                    |
+| Tools              | Block on poor quality, Stop recording if out of frame (locked on while Block on poor quality is on), Show tracking marks, Debug overlay, Copy settings, Purge cache, Delete inspection clips                    |
 | Results            | One line per run: status, analysis ID per step, settings used                                        |
 
 The USB icon in the app bar opens **Camera diagnostics**. It compares what the Flutter plugin sees with what Android offers natively, and gives a verdict.

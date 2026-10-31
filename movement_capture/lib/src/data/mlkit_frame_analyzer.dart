@@ -19,6 +19,7 @@ import '../domain/frame_metrics.dart';
 import '../domain/luma_stats.dart';
 import '../domain/luma_thumb.dart';
 import '../domain/quality_status.dart';
+import '../domain/overlay_builder.dart';
 import '../domain/pose_topology.dart';
 import 'native_bridge.dart';
 
@@ -210,6 +211,12 @@ class MlKitFrameAnalyzer implements FrameAnalyzer {
         faceCount: faces.length,
         face: face,
         hands: hands,
+        overlay: buildOverlay(
+          pose: allPose,
+          hands: hands,
+          choice: _sideChoice(),
+          framesMirrored: _framesMirrored(),
+        ),
         quality: assessQuality(
           config: _config,
           step: step,

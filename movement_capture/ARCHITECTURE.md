@@ -47,7 +47,10 @@ lib/
       camera_choice.dart            camera ordering and default choice
       luma_stats.dart               brightness (NV21 and BGRA)
       quality_timer.dart            debouncing (grace / stability windows)
-      pose_topology.dart            regions, skeleton lines, overlay frames
+      pose_topology.dart            regions, skeleton lines, overlay frames (pose + hands, no face)
+      overlay_builder.dart          buildOverlay: drops face points, keeps the chosen hand only
+      out_of_frame.dart             what counts as out of frame per step; StopRule (the two switches)
+      out_of_frame_timer.dart       OutOfFrameTimer: grace, warning with time left, stop
       landmark_track.dart           builds landmarks.json
       face_snapshot.dart            face box, landmarks, contours, head angles
       hand_topology.dart            hand points and lines, HandSnapshot, personSide
@@ -70,7 +73,7 @@ android/ ios/                    native plugin: support info, settings, keep scr
 test/                            unit tests for domain, data and presentation logic
 ```
 
-Pure-Dart parts (unit-tested without a device): `luma_stats`, `quality_timer`, `pose_topology`, `landmark_track`, `camera_choice`, `support_report`, `serial_queue`, `step_uploads`, `speech_planner`, `config`, `review_samples`. Camera and ML Kit cannot run under `flutter test`, so the controller's camera flows and `VoiceGuide` are verified on a device.
+Pure-Dart parts (unit-tested without a device): `luma_stats`, `quality_timer`, `pose_topology`, `landmark_track`, `camera_choice`, `support_report`, `serial_queue`, `step_uploads`, `speech_planner`, `config`, `review_samples`, `overlay_builder`, `out_of_frame`, `out_of_frame_timer`. Camera and ML Kit cannot run under `flutter test`, so the controller's camera flows and `VoiceGuide` are verified on a device.
 
 ## 3. Session state machine
 
@@ -133,7 +136,9 @@ camera frame (Android NV21 / iOS BGRA, ~30 fps)
       │    feet:     none
       └─ FrameCheck: issues, overlay points, pose points, face snapshot
           ├─ QualityTimer: confirm after 0.4 s bad / 1.5 s good
-          ├─ overlay → SkeletonLayer (glides between samples)
+          ├─ OutOfFrameTimer (recording, stopWhenOutOfFrame only): warning, then the existing abort
+          ├─ overlay (body + hands, never the face) → SkeletonLayer: own RepaintBoundary and repaint
+          │    notifier, so a new frame repaints only the layer, not CameraPreview
           ├─ while recording: LandmarkTrack sample (t ms)
           └─ while recording (review on): TimedOverlay kept in memory for the review, then discarded
 ```

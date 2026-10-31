@@ -9,6 +9,7 @@ import 'package:movement_capture/src/domain/quality_summary.dart';
 import 'package:movement_capture/src/presentation/controller.dart';
 import 'package:movement_capture/src/presentation/quality_status_bar.dart';
 import 'package:movement_capture/src/presentation/review_view.dart';
+import 'package:movement_capture/src/presentation/skeleton_layer.dart';
 
 class _NoUpload implements MovementUploader {
   @override
@@ -129,6 +130,8 @@ void main() {
         ),
         strings: _strings,
         icons: _icons,
+        skeletonColors: const SkeletonColors(
+            body: Colors.blue, hand: Colors.green, foot: Colors.orange),
         activeColor: Colors.green,
         onCancel: () {},
       )));
@@ -173,9 +176,9 @@ void main() {
     });
   });
 
-  test('no tracking marks are drawn on the camera picture', () {
-    // Camera and ML Kit cannot run under flutter test, so guard the source:
-    // the only painter left is the fixed safe-zone box (it never moves).
+  test('only the safe-zone box and the skeleton layer paint on the picture',
+      () {
+    // Camera and ML Kit cannot run under flutter test, so guard the source.
     final painters = [
       for (final f in Directory('lib')
           .listSync(recursive: true)
@@ -184,13 +187,9 @@ void main() {
         for (final m in RegExp(r'class (\w+) extends CustomPainter')
             .allMatches(f.readAsStringSync()))
           m.group(1)!,
-    ];
-    expect(painters, ['_SafeZonePainter']);
-    for (final name in const [
-      'skeleton_layer.dart',
-      'tracker_overlay.dart',
-      'tracker_guide.dart',
-    ]) {
+    ]..sort();
+    expect(painters, ['_SafeZonePainter', '_SkeletonPainter']);
+    for (final name in const ['tracker_overlay.dart', 'tracker_guide.dart']) {
       expect(File('lib/src/presentation/$name').existsSync(), isFalse);
     }
   });

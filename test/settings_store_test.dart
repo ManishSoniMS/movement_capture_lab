@@ -33,4 +33,27 @@ void main() {
     s.scan.select(CaptureStep.hands);
     expect(s.toConfig().steps, [CaptureStep.hands]);
   });
+
+  test('stop-when-out-of-frame defaults to off and round-trips', () async {
+    SharedPreferences.setMockInitialValues({});
+    expect(await PrefsSettingsStore().loadStopWhenOutOfFrame(), isFalse);
+    await PrefsSettingsStore().saveStopWhenOutOfFrame(true);
+    expect(await PrefsSettingsStore().loadStopWhenOutOfFrame(), isTrue);
+    await PrefsSettingsStore().saveStopWhenOutOfFrame(false);
+    expect(await PrefsSettingsStore().loadStopWhenOutOfFrame(), isFalse);
+  });
+
+  test('both new settings reach the config and the copied summary', () {
+    final s = LabSettings();
+    expect(s.showSkeleton, isTrue);
+    expect(s.stopWhenOutOfFrame, isFalse);
+    s
+      ..showSkeleton = false
+      ..stopWhenOutOfFrame = true;
+    final c = s.toConfig();
+    expect(c.showSkeleton, isFalse);
+    expect(c.stopWhenOutOfFrame, isTrue);
+    expect(s.summary(), contains('marks=false'));
+    expect(s.summary(), contains('stopOutOfFrame=true'));
+  });
 }

@@ -4,8 +4,11 @@ import 'package:video_player/video_player.dart';
 
 import '../domain/capture_state.dart';
 import '../domain/config.dart';
+import '../domain/pose_topology.dart';
+import '../domain/review_samples.dart';
 import 'controller.dart';
 import 'customization.dart';
+import 'skeleton_layer.dart';
 
 /// Full-screen playback of the clip just recorded, the overall quality
 /// result, and Continue (or Use anyway) / Record again / Cancel.
@@ -16,6 +19,7 @@ class ReviewView extends StatefulWidget {
     required this.review,
     required this.strings,
     required this.icons,
+    required this.skeletonColors,
     required this.activeColor,
     required this.onCancel,
   });
@@ -24,6 +28,7 @@ class ReviewView extends StatefulWidget {
   final Reviewing review;
   final MovementCaptureStrings strings;
   final MovementCaptureIcons icons;
+  final SkeletonColors skeletonColors;
   final Color activeColor;
   final VoidCallback onCancel;
 
@@ -34,6 +39,7 @@ class ReviewView extends StatefulWidget {
 class _ReviewViewState extends State<ReviewView> {
   late final VideoPlayerController _player =
       VideoPlayerController.file(widget.review.video);
+  final ValueNotifier<OverlayFrame?> _overlay = ValueNotifier(null);
   bool _ready = false;
   bool _failed = false;
   bool _busy = false; // a choice was made; ignore further taps
@@ -41,6 +47,7 @@ class _ReviewViewState extends State<ReviewView> {
   @override
   void initState() {
     super.initState();
+    _player.addListener(_onTick);
     _init();
   }
 
@@ -57,9 +64,17 @@ class _ReviewViewState extends State<ReviewView> {
     }
   }
 
+  void _onTick() {
+    if (!_ready) return;
+    _overlay.value =
+        overlayAt(widget.review.samples, _player.value.position.inMilliseconds);
+  }
+
   @override
   void dispose() {
+    _player.removeListener(_onTick);
     _player.dispose();
+    _overlay.dispose();
     super.dispose();
   }
 
@@ -82,6 +97,8 @@ class _ReviewViewState extends State<ReviewView> {
     final mode = config.mode;
     final flip =
         config.reviewMirrorFor(widget.review.cameraKind, defaultTargetPlatform);
+    final showSkeleton =
+        config.showSkeleton && widget.review.samples.isNotEmpty;
     final quality = widget.review.quality;
     final good = quality.passes;
     const tall = Size(0, 56);
@@ -107,6 +124,13 @@ class _ReviewViewState extends State<ReviewView> {
                       fit: StackFit.expand,
                       children: [
                         VideoPlayer(_player),
+                        if (showSkeleton)
+                          SkeletonLayer(
+                            frames: _overlay,
+                            colors: widget.skeletonColors,
+                            minLikelihood: config.skeletonMinLikelihood,
+                            transition: const Duration(milliseconds: 50),
+                          ),
                       ],
                     ),
                   ),

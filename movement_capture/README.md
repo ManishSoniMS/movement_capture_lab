@@ -254,7 +254,7 @@ Cancel is available on every screen, and so is the system back gesture. If a rec
 | `hands`    | Both hands visible (MediaPipe, 21 points per hand), inside the box; lighting | 21 points per hand: `handedness`, `side`, `score`                       |
 | `feet`     | Lighting only                                           | None                                                                                 |
 
-Face, hands and feet are skippable by default. The skeleton overlay draws face, hands, feet and body in different colours. Its visibility is independent of the debug overlay.
+Face, hands and feet are skippable by default. The tracking marks draw the body skeleton (with leg and foot points), and the two hands in the hands step. The face is never marked, in any step, live or in review. The feet step tracks nothing, so its marks come only from the full-body skeleton. Visibility is independent of the debug overlay and of `showDetails`.
 
 ---
 
@@ -355,7 +355,9 @@ All fields of `MovementCaptureConfig` (all optional):
 | `orientation`                                                        | `auto`                          | `auto` (tablets landscape, phones portrait), `landscape`, `portrait`                                             |
 | `allowRecordingWithoutLiveChecks`                                    | `true`                          | If the device can't check while recording: record anyway and report `liveChecks=false` (`false` = show an error) |
 | `reviewBeforeUpload`                                                 | `true`                          | Show each clip for approval before upload                                                                        |
-| `showSkeleton`                                                       | `true`                          | Draw the tracked skeleton                                                                                        |
+| `showSkeleton`                                                       | `true`                          | Draw the tracking marks: body skeleton (arms, legs, feet points) and hand points. Never the face. Not hidden by `showDetails` |
+| `stopWhenOutOfFrame`                                                 | `false`                         | Stop recording (clip deleted, step restarts when back) if the subject is out of frame longer than `outOfFrameStopAfter`; cancels the countdown too. Ignored when `blockOnPoorQuality` is on and on the feet step |
+| `outOfFrameStopAfter`                                                | 2 s (**unconfirmed**)           | How long the subject may be out of frame while recording before it stops. The warning shows after `violationGrace` |
 | `skeletonMinLikelihood`                                              | 0.2                             | Points below this are hidden; up to 0.7 they are drawn faded                                                     |
 | `safeZoneInset`                                                      | 0.075                           | Box margin at each edge (wide-angle lens distortion)                                                             |
 | `minLandmarkLikelihood`                                              | 0.5                             | Confidence needed for the 11 key body points                                                                     |
@@ -379,7 +381,7 @@ Tune the thresholds on site with the lab app (the repository root). It has slide
 
 - **`MovementCaptureStrings`**: every text, with English defaults. Mode-specific texts come in pairs, such as `stepInstructionFace` (assisted) and `selfStepInstructionFace` (self-guided). Templates use `{n}`, `{total}`, `{step}`, `{elapsed}`, `{percent}`. Pass translations from your l10n system, and have clinical wording reviewed by native speakers.
 - **`MovementCaptureIcons`**: every icon. Pass your own icon-font glyphs.
-- **`MovementCaptureStyle`**: error, active and skeleton colours. Anything left `null` comes from your app's `ColorScheme`: error, primary; skeleton body = primary, face = tertiary, hands = secondary, feet = inversePrimary.
+- **`MovementCaptureStyle`**: error, active, warning and skeleton colours. Anything left `null` comes from your app's `ColorScheme`: error, primary; skeleton body = primary, hands = secondary, feet = inversePrimary (there is no face colour).
 
 Touch targets are at least 56 dp and texts are large by design (elderly users).
 

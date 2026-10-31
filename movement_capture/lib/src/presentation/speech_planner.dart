@@ -14,6 +14,7 @@ class SpeechSnapshot {
     this.lastSaved,
     this.awaitingSideChoice = false,
     this.sideChoice = SideChoice.both,
+    this.outOfFrameWarning = false,
   });
   final CaptureState state;
   final CaptureStep step;
@@ -23,6 +24,9 @@ class SpeechSnapshot {
   /// The hands / feet question is on screen.
   final bool awaitingSideChoice;
   final SideChoice sideChoice;
+
+  /// "Come back into the frame" warning is active while recording.
+  final bool outOfFrameWarning;
 }
 
 /// Decides what to say for each state change. Each event is spoken once;
@@ -90,6 +94,16 @@ class SpeechPlanner {
             'count:${s.stepIndex}:$secondsLeft',
             () =>
                 first ? strings.voiceStartingIn(secondsLeft) : '$secondsLeft');
+      case Recording() when s.outOfFrameWarning:
+        // Repeats like an issue: once when it starts, then every issueRepeat
+        // while the subject is still out of frame.
+        final due = _lastKey != 'comeback' ||
+            _lastIssueAt == null ||
+            now.difference(_lastIssueAt!) >= issueRepeat;
+        if (!due) return null;
+        _lastIssueAt = now;
+        _lastKey = 'comeback';
+        return strings.voiceComeBack;
       case Recording(:final liveChecks):
         _clearIssue();
         return _once(

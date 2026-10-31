@@ -3,6 +3,7 @@ import 'dart:io';
 import 'camera_choice.dart';
 import 'capture_issue.dart';
 import 'quality_summary.dart';
+import 'review_samples.dart';
 
 sealed class CaptureState {
   const CaptureState();
@@ -22,7 +23,12 @@ final class CameraUnavailable extends CaptureState {
 /// Preview running, checks running. Not armed = waiting for Start (the
 /// step's instruction is shown). Armed = waiting for good conditions.
 final class Checking extends CaptureState {
-  const Checking({this.issue, this.armed = false, this.interrupted = false});
+  const Checking({
+    this.issue,
+    this.armed = false,
+    this.interrupted = false,
+    this.interruptedOutOfFrame = false,
+  });
 
   /// Confirmed issue currently shown, or null when conditions are good.
   final CaptureIssue? issue;
@@ -32,6 +38,10 @@ final class Checking extends CaptureState {
 
   /// True when a recording was just stopped by [issue].
   final bool interrupted;
+
+  /// True when the recording was stopped by "Stop recording if out of
+  /// frame": the banner then says the person moved out of the frame.
+  final bool interruptedOutOfFrame;
 }
 
 final class CountingDown extends CaptureState {
@@ -64,6 +74,7 @@ final class Reviewing extends CaptureState {
   const Reviewing({
     required this.video,
     required this.quality,
+    this.samples = const [],
     required this.cameraKind,
     required this.fileMirrored,
   });
@@ -71,6 +82,9 @@ final class Reviewing extends CaptureState {
 
   /// How the recording measured up (see [QualitySummary.measured]).
   final QualitySummary quality;
+
+  /// Skeleton samples in time with the clip (empty when marks are off).
+  final List<TimedOverlay> samples;
   final CameraKind cameraKind;
   final bool fileMirrored;
 }

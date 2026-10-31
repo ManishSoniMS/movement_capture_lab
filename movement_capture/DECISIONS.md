@@ -148,3 +148,9 @@ All thresholds are in config.
 ### D-031 · Quitting is always possible, with a confirmation only when work would be lost
 **Decision:** Every state offers Cancel, and the back gesture always quits. A two-button confirmation appears only during countdown, recording, review, or while uploads are unfinished.
 **Why:** Users can leave at any point; a mistaken tap should not silently discard a recording.
+
+### D-032 · Tracking marks: removed for the face only; out-of-frame stop rule
+**Decision:** Supersedes the removal in task 03. The marks come back for the body (skeleton with legs and feet points) and the hands, live and in the review. Nothing is ever drawn on the face (no boxes, contours or face points); the face detector keeps running for the quality checks and `landmarks.json`. `showDetails` does not hide the marks. With one hand chosen, only that hand is drawn (same `personSide` logic as `handSideIssue`). The feet step still tracks nothing (D-020); its leg and foot marks come from the full-body skeleton.
+**Also:** `stopWhenOutOfFrame` (default off) reuses the existing abort path, limited to "subject left the frame" (full body: noPerson, outOfFrame; face: noFace; hands: noHands, and oneHand only when both hands are required; feet: none) with `outOfFrameStopAfter` (2 s, unconfirmed). `blockOnPoorQuality` on wins: any issue stops, as before. Both off: nothing stops and the review result reports the time out of frame.
+**Why:** The brief asked to remove the marks from the face only; the earlier change removed them everywhere. A separate switch lets a host stop on "nobody in frame" without making lighting or sharpness stop the recording.
+**Consequences:** The feet step cannot use the auto-stop (the screen says so). The team may want to revisit feet tracking.

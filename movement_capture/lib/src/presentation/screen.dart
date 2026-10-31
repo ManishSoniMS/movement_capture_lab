@@ -20,6 +20,7 @@ import 'debug_overlay.dart';
 import 'review_view.dart';
 import 'side_choice_view.dart';
 import 'quality_status_bar.dart';
+import 'skeleton_layer.dart';
 import 'speech_planner.dart';
 import 'voice_guide.dart';
 
@@ -180,6 +181,11 @@ class _MovementCaptureScreenState extends State<MovementCaptureScreen>
       error: style.errorColor ?? scheme.error,
       active: style.activeColor ?? scheme.primary,
       warning: style.warningColor ?? const Color(0xFFFFB300),
+      skeleton: SkeletonColors(
+        body: style.skeletonBodyColor ?? scheme.primary,
+        hand: style.skeletonHandColor ?? scheme.secondary,
+        foot: style.skeletonFootColor ?? scheme.inversePrimary,
+      ),
     );
     return ListenableBuilder(
       listenable: _controller,
@@ -224,12 +230,14 @@ class _Ui {
     required this.error,
     required this.active,
     required this.warning,
+    required this.skeleton,
   });
   final MovementCaptureStrings strings;
   final MovementCaptureIcons icons;
   final Color error;
   final Color active;
   final Color warning;
+  final SkeletonColors skeleton;
 }
 
 Future<void> _showCameraSheet(
@@ -355,6 +363,7 @@ class _CaptureBody extends StatelessWidget {
         review: review,
         strings: ui.strings,
         icons: ui.icons,
+        skeletonColors: ui.skeleton,
         activeColor: ui.active,
         onCancel: onClose,
       );
@@ -383,6 +392,27 @@ class _CaptureBody extends StatelessWidget {
                   fit: StackFit.expand,
                   children: [
                     _SafeZoneOverlay(inset: controller.config.safeZoneInset),
+                    // Tracking marks sit above the safe-zone box. They are not
+                    // "details": `showDetails` does not hide them, only
+                    // `showSkeleton` does. The debug rings (showDebug) are
+                    // drawn by the same layer.
+                    if (controller.config.showSkeleton || showDebug)
+                      Transform.flip(
+                        flipX: controller.selectedCamera != null &&
+                            controller.config.overlayFlipFor(
+                                controller.selectedCamera!.kind,
+                                defaultTargetPlatform),
+                        child: SkeletonLayer(
+                          frames: controller.overlay,
+                          colors: ui.skeleton,
+                          minLikelihood:
+                              controller.config.skeletonMinLikelihood,
+                          transition: const Duration(milliseconds: 50),
+                          drawMarks: controller.config.showSkeleton,
+                          debugMetrics: showDebug ? controller.metrics : null,
+                          debugBadColor: ui.error,
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -487,6 +517,8 @@ class _CaptureBody extends StatelessWidget {
           goodColor: ui.active,
           warningColor: ui.warning,
           badColor: ui.error,
+          outOfFrameWarning: controller.outOfFrameWarning,
+          stopUnavailable: controller.outOfFrameStopUnavailable,
         ),
         Expanded(child: stack),
       ],
@@ -608,7 +640,11 @@ class _TopBanner extends StatelessWidget {
         );
 
     switch (state) {
-      case Checking(issue: final issue?, :final interrupted):
+      case Checking(
+          issue: final issue?,
+          :final interrupted,
+          :final interruptedOutOfFrame
+        ):
         return _BannerCard(
           color: scheme.errorContainer,
           child: Row(
@@ -618,9 +654,11 @@ class _TopBanner extends StatelessWidget {
               const SizedBox(width: 16),
               Expanded(
                 child: Text(
-                  interrupted
-                      ? '${s.interrupted}\n${s.issueFor(issue, mode)}'
-                      : s.issueFor(issue, mode),
+                  interruptedOutOfFrame
+                      ? s.outOfFrameStopped
+                      : interrupted
+                          ? '${s.interrupted}\n${s.issueFor(issue, mode)}'
+                          : s.issueFor(issue, mode),
                   style: textStyle?.copyWith(color: scheme.onErrorContainer),
                 ),
               ),
