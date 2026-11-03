@@ -54,11 +54,11 @@ String _hex4(int v) => v.toRadixString(16).toUpperCase().padLeft(4, '0');
 
 /// Frame area each preset asks the plugin for (from `UvcCameraNativeMethodCallHandler.java:52`).
 const _presetAsk = <UvcCameraResolutionPreset, String>{
-  UvcCameraResolutionPreset.min: 'smallest (Integer.MIN_VALUE)',
+  UvcCameraResolutionPreset.min: 'smallest size',
   UvcCameraResolutionPreset.low: '640x480 = 307200 px',
   UvcCameraResolutionPreset.medium: '1280x720 = 921600 px',
   UvcCameraResolutionPreset.high: '1920x1080 = 2073600 px',
-  UvcCameraResolutionPreset.max: 'largest (Integer.MAX_VALUE)',
+  UvcCameraResolutionPreset.max: 'largest size',
 };
 
 /// LAB ONLY, TEMPORARY (kiosk-08 Part A): go/no-go test for talking to a USB
@@ -592,9 +592,9 @@ class _UsbDirectTestPageState extends State<UsbDirectTestPage> {
           [
             for (final p in UvcCameraResolutionPreset.values)
               '${p.name}: asks ${_presetAsk[p]}',
-            'Plugin 0.0.13 sorts sizes by (area - asked) from largest, so it '
-                'takes the largest size whatever the preset (see AI_LOG). '
-                'The mode actually used is shown after open.',
+            'Closest-area fix applied (vendored uvccamera, see '
+                'third_party/uvccamera/PATCHES.md). The mode actually used is '
+                'shown after open.',
           ].join('\n'),
           style: theme.textTheme.bodySmall,
         ),

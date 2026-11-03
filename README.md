@@ -24,6 +24,8 @@ cd ios && pod install  # once, for iOS
 
 Android 7+ (API 24) and iOS 15.5+. It needs a real device: the camera and ML Kit don't run in simulators.
 
+Phone with the USB webcam (single USB-C port, so Wi-Fi adb): see [docs/RUNNING_ON_A_PHONE_WITH_THE_WEBCAM.md](docs/RUNNING_ON_A_PHONE_WITH_THE_WEBCAM.md).
+
 ## What's on the home screen
 
 | Section            | Use                                                                                                  |

@@ -598,10 +598,9 @@ packages:
   uvccamera:
     dependency: "direct main"
     description:
-      name: uvccamera
-      sha256: d47266897e71923f9a52bbcd4aa55cc891776441cd72257df69df453697e8917
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/uvccamera"
+      relative: true
+    source: path
     version: "0.0.13"
   vector_math:
     dependency: transitive

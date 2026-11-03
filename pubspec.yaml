@@ -30,6 +30,9 @@ dev_dependencies:
 dependency_overrides:
   camera_avfoundation:
     path: third_party/camera_avfoundation
+  # LAB ONLY, TEMPORARY: uvccamera 0.0.13 + 2 patches (third_party/uvccamera/PATCHES.md).
+  uvccamera:
+    path: third_party/uvccamera
 
 flutter:
   uses-material-design: true

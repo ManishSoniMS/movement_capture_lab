@@ -48,7 +48,7 @@ class MainActivity : FlutterActivity() {
                         )
                         else -> result.notImplemented()
                     }
-                } catch (e: Exception) {
+                } catch (e: Throwable) {
                     result.error("DIAGNOSTICS_FAILED", e.toString(), null)
                 }
             }
@@ -87,8 +87,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun cameraGranted(): Boolean =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
-            checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 
     private var pendingCameraResult: MethodChannel.Result? = null
 
@@ -152,10 +151,16 @@ class MainActivity : FlutterActivity() {
      * Flutter treats as the default (on).
      */
     private fun impellerEnabled(): Boolean? {
-        val info = packageManager.getApplicationInfo(
-            packageName,
-            PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA.toLong()),
-        )
+        // ApplicationInfoFlags is API 33+; touching it on Android 11 throws NoClassDefFoundError.
+        val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.getApplicationInfo(
+                packageName,
+                PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA.toLong()),
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.getApplicationInfo(packageName, PackageManager.GET_META_DATA)
+        }
         val md = info.metaData ?: return null
         val key = "io.flutter.embedding.android.EnableImpeller"
         if (!md.containsKey(key)) return null
@@ -191,7 +196,7 @@ class MainActivity : FlutterActivity() {
                         mapOf("exit" to code, "total" to lines.size, "lines" to out),
                     )
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 runOnUiThread { result.error("LOGCAT_FAILED", e.toString(), null) }
             }
         }.start()
@@ -203,7 +208,7 @@ class MainActivity : FlutterActivity() {
             try {
                 val (code, lines) = runLogcat("-c")
                 runOnUiThread { result.success(mapOf("exit" to code, "output" to lines)) }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 runOnUiThread { result.error("LOGCAT_FAILED", e.toString(), null) }
             }
         }.start()

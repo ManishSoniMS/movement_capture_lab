@@ -82,7 +82,7 @@ class MovementCapturePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Ac
                 }
                 else -> result.notImplemented()
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             result.error("NATIVE_ERROR", e.toString(), null)
         }
     }
@@ -100,14 +100,14 @@ class MovementCapturePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Ac
                 pm.getPackageInfo(context.packageName, PackageManager.GET_PERMISSIONS)
             }
             info.requestedPermissions?.contains(Manifest.permission.CAMERA) == true
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             false
         }
         val granted = context.checkSelfPermission(Manifest.permission.CAMERA) ==
             PackageManager.PERMISSION_GRANTED
         val freeBytes = try {
             StatFs(context.cacheDir.absolutePath).availableBytes
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             -1L
         }
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
