@@ -3,7 +3,9 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:uvccamera/src/uvccamera_platform_interface.dart'; // ignore: implementation_imports
 import 'package:uvccamera/uvccamera.dart';
+import 'package:video_player/video_player.dart';
 
 import '../data/uploaders.dart';
 
@@ -50,13 +52,25 @@ class _UsbInfo {
 
 String _hex4(int v) => v.toRadixString(16).toUpperCase().padLeft(4, '0');
 
+/// Frame area each preset asks the plugin for (from `UvcCameraNativeMethodCallHandler.java:52`).
+const _presetAsk = <UvcCameraResolutionPreset, String>{
+  UvcCameraResolutionPreset.min: 'smallest (Integer.MIN_VALUE)',
+  UvcCameraResolutionPreset.low: '640x480 = 307200 px',
+  UvcCameraResolutionPreset.medium: '1280x720 = 921600 px',
+  UvcCameraResolutionPreset.high: '1920x1080 = 2073600 px',
+  UvcCameraResolutionPreset.max: 'largest (Integer.MAX_VALUE)',
+};
+
 /// LAB ONLY, TEMPORARY (kiosk-08 Part A): go/no-go test for talking to a USB
 /// webcam directly over UVC, without Android's camera system.
 ///
 /// Lists real cameras (video-class interface) apart from other USB devices,
-/// asks for CAMERA and then USB permission, previews, records 10 s and copies
-/// the clip to the `inspection/` folder for `adb pull`. Every error and plugin
-/// event is shown on screen instead of crashing. Removed in Part B.
+/// asks for CAMERA and then USB permission, opens the preview at a preset the
+/// operator picks, lists the modes the camera offers, records clips and copies
+/// them to the `inspection/` folder for `adb pull`. Tools to tell "no frames"
+/// from "frames not drawn": a coloured backing behind the texture, the widget
+/// size, a quick clip played back in-app, and the app's own native log. Every
+/// error and plugin event is shown on screen. Removed in Part B.
 class UsbDirectTestPage extends StatefulWidget {
   const UsbDirectTestPage({super.key});
 
@@ -67,13 +81,7 @@ class UsbDirectTestPage extends StatefulWidget {
 class _UsbDirectTestPageState extends State<UsbDirectTestPage> {
   static const _channel = MethodChannel('lab/camera_diagnostics');
   static const _recordSeconds = 10;
-
-  /// Tried in order; the first that streams wins. `medium` is ~720p.
-  static const _presets = [
-    UvcCameraResolutionPreset.medium,
-    UvcCameraResolutionPreset.low,
-    UvcCameraResolutionPreset.min,
-  ];
+  static const _quickSeconds = 3;
 
   final _log = <String>[];
   final _subs = <StreamSubscription<Object?>>[];
@@ -87,32 +95,39 @@ class _UsbDirectTestPageState extends State<UsbDirectTestPage> {
   /// `textureId` are never touched before this.
   bool _ready = false;
   String? _openKey;
+  UvcCameraResolutionPreset? _openPreset;
+  final _openWatch = Stopwatch();
   bool? _supported;
   bool _busy = false;
+  bool _recording = false;
   int _remaining = 0;
   Timer? _ticker;
   String? _result;
+
+  /// What the camera offers, read after open (empty = not read / failed).
+  List<UvcCameraMode> _modes = const [];
+
+  /// Last camera and preset, for the Reopen button after a drop.
+  _UsbInfo? _lastCam;
+  UvcCameraResolutionPreset? _lastPreset;
+  String? _dropHint;
+
+  /// `true`/`false` from the build switch, `null` = not set (default on).
+  bool? _impeller;
+  bool _impellerKnown = false;
+
+  VideoPlayerController? _clip;
+  String? _nativeLog;
 
   @override
   void initState() {
     super.initState();
     _subs.add(UvcCamera.deviceEventStream.listen(
-      (e) {
-        _note('device event: ${e.type.name} ${e.device.name}');
-        if (e.type == UvcCameraDeviceEventType.detached ||
-            e.type == UvcCameraDeviceEventType.disconnected) {
-          final open = _openKey;
-          final match = _usb.where((u) => u.deviceName == e.device.name);
-          if (open != null && match.any((u) => u.key == open)) {
-            _note('open camera was unplugged');
-            unawaited(_close());
-          }
-        }
-        unawaited(_refresh());
-      },
+      _onDeviceEvent,
       onError: (Object e) => _note('device stream error: $e'),
     ));
     unawaited(_refresh());
+    unawaited(_readImpeller());
   }
 
   @override
@@ -125,6 +140,7 @@ class _UsbDirectTestPageState extends State<UsbDirectTestPage> {
     _controller = null;
     _ready = false;
     if (c != null) unawaited(_safeDispose(c));
+    unawaited(_clip?.dispose());
     super.dispose();
   }
 
@@ -144,6 +160,45 @@ class _UsbDirectTestPageState extends State<UsbDirectTestPage> {
       _note('$what: ${e.runtimeType}: $e');
     }
     if (st != null) debugPrintStack(stackTrace: st, label: what);
+  }
+
+  Future<void> _readImpeller() async {
+    try {
+      final v = await _channel.invokeMethod<bool>('impellerEnabled');
+      if (!mounted) return;
+      setState(() {
+        _impeller = v;
+        _impellerKnown = true;
+      });
+    } catch (e) {
+      _note('impeller flag unreadable: $e');
+    }
+  }
+
+  /// A camera disconnect while open: log how long it ran and what it was
+  /// doing, close cleanly, and do NOT reopen (use the Reopen button).
+  void _onDeviceEvent(UvcCameraDeviceEvent e) {
+    _note('device event: ${e.type.name} ${e.device.name}');
+    final gone = e.type == UvcCameraDeviceEventType.detached ||
+        e.type == UvcCameraDeviceEventType.disconnected;
+    final open = _openKey;
+    final key = '${_hex4(e.device.vendorId)}:${_hex4(e.device.productId)}';
+    if (gone && open != null && key == open) {
+      final secs = (_openWatch.elapsedMilliseconds / 1000).toStringAsFixed(1);
+      final mode = _controller?.value.previewMode;
+      final what = _recording ? 'recording' : 'previewing';
+      final modeText = mode == null
+          ? '?'
+          : '${mode.frameWidth}x${mode.frameHeight} ${mode.frameFormat.name}';
+      _note('open camera dropped after $secs s while $what at $modeText '
+          '(preset ${_openPreset?.name})');
+      setState(() {
+        _dropHint = 'Dropped after $secs s at $modeText. Try a lower preset, '
+            'a plain OTG adapter, or a powered hub.';
+      });
+      unawaited(_close());
+    }
+    unawaited(_refresh());
   }
 
   Future<List<_UsbInfo>> _listUsb() async {
@@ -262,9 +317,14 @@ class _UsbDirectTestPageState extends State<UsbDirectTestPage> {
     return (ok: ok, error: error, stack: stack);
   }
 
-  Future<void> _openCamera(_UsbInfo cam) async {
+  /// Opens [cam] at exactly [preset]. No fallback to other presets: the test
+  /// matrix needs to know what each preset does on its own.
+  Future<void> _openCamera(_UsbInfo cam, UvcCameraResolutionPreset preset) async {
     if (_busy) return;
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _dropHint = null;
+    });
     try {
       await _close();
       if (!await _hasUsbPermission(cam.deviceName)) {
@@ -276,50 +336,72 @@ class _UsbDirectTestPageState extends State<UsbDirectTestPage> {
         _note('plugin does not list ${cam.key}; tap refresh');
         return;
       }
-      for (final preset in _presets) {
-        _note('trying preset ${preset.name}');
-        final c = UvcCameraController(device: dev, resolutionPreset: preset);
-        final r = await _initialize(c);
-        if (!r.ok) {
-          _noteError(
-            'initialize(${preset.name}) failed',
-            r.error ?? 'initialize returned but the controller is not ready',
-            r.stack,
-          );
-          await _safeDispose(c);
-          continue;
-        }
-        if (!mounted) {
-          await _safeDispose(c);
-          return;
-        }
-        _camSubs
-          ..add(c.cameraErrorEvents.listen(
-            (e) => _note('ERROR event: ${e.error.type.name} '
-                '${e.error.toMap()}'),
-            onError: (Object e) => _note('error stream: $e'),
-          ))
-          ..add(c.cameraStatusEvents.listen(
-            (e) => _note('status: ${e.payload.toMap()}'),
-            onError: (Object e) => _note('status stream: $e'),
-          ));
-        final m = c.value.previewMode;
-        _note('preview mode used (${preset.name}): ${m?.frameWidth}x'
-            '${m?.frameHeight} ${m?.frameFormat.name}');
-        setState(() {
-          _controller = c;
-          _openKey = cam.key;
-          _ready = true;
-        });
+      _lastCam = cam;
+      _lastPreset = preset;
+      _note('opening preset ${preset.name} (asks for ${_presetAsk[preset]})');
+      final c = UvcCameraController(device: dev, resolutionPreset: preset);
+      final r = await _initialize(c);
+      if (!r.ok) {
+        _noteError(
+          'initialize(${preset.name}) failed',
+          r.error ?? 'initialize returned but the controller is not ready',
+          r.stack,
+        );
+        await _safeDispose(c);
         return;
       }
-      _note('all presets failed. See "If it still fails" below.');
+      if (!mounted) {
+        await _safeDispose(c);
+        return;
+      }
+      _camSubs
+        ..add(c.cameraErrorEvents.listen(
+          (e) => _note('ERROR event: ${e.error.type.name} '
+              '${e.error.toMap()}'),
+          onError: (Object e) => _note('error stream: $e'),
+        ))
+        ..add(c.cameraStatusEvents.listen(
+          (e) => _note('status: ${e.payload.toMap()}'),
+          onError: (Object e) => _note('status stream: $e'),
+        ));
+      final m = c.value.previewMode;
+      _note('preview mode used (${preset.name}): ${m?.frameWidth}x'
+          '${m?.frameHeight} ${m?.frameFormat.name}, texture id '
+          '${c.textureId}');
+      _openWatch
+        ..reset()
+        ..start();
+      setState(() {
+        _controller = c;
+        _openKey = cam.key;
+        _openPreset = preset;
+        _ready = true;
+      });
+      unawaited(_readModes(c));
     } catch (e, st) {
       _noteError('open failed', e, st);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
+
+  /// The plugin has no public "supported sizes" call on the controller, but
+  /// the platform interface has one. Lab only: imported from `src/`.
+  Future<void> _readModes(UvcCameraController c) async {
+    try {
+      final modes = await UvcCameraPlatformInterface.instance
+          .getSupportedModes(c.cameraId);
+      if (!mounted || _controller != c) return;
+      setState(() => _modes = modes);
+      _note('camera offers ${modes.length} mode(s): '
+          '${modes.map(_modeText).join(', ')}');
+    } catch (e, st) {
+      _noteError('supported modes unreadable', e, st);
+    }
+  }
+
+  String _modeText(UvcCameraMode m) =>
+      '${m.frameWidth}x${m.frameHeight} ${m.frameFormat.name}';
 
   /// Disposes [c]. A failed `initialize()` rethrows its original error here,
   /// so it is logged as the real cause.
@@ -343,11 +425,18 @@ class _UsbDirectTestPageState extends State<UsbDirectTestPage> {
     _ready = false;
     _openKey = null;
     _remaining = 0;
+    _recording = false;
+    _modes = const [];
+    _openWatch.stop();
     if (mounted) setState(() {});
     if (c != null) await _safeDispose(c);
   }
 
-  Future<void> _record() async {
+  /// Records [seconds] seconds, copies the clip to `inspection/`, and for a
+  /// quick clip plays it back on the page. The playback is the decisive test:
+  /// a clip that plays while the live preview is blank means frames arrive but
+  /// the preview texture is not drawn.
+  Future<void> _record(int seconds, {required bool play}) async {
     final c = _controller;
     if (c == null || !_ready || _busy || c.value.isRecordingVideo) return;
     final mode = c.value.previewMode;
@@ -357,18 +446,22 @@ class _UsbDirectTestPageState extends State<UsbDirectTestPage> {
     }
     setState(() {
       _busy = true;
+      _recording = true;
       _result = null;
-      _remaining = _recordSeconds;
+      _remaining = seconds;
     });
+    await _clip?.dispose();
+    _clip = null;
     final started = DateTime.now();
     try {
       await c.startVideoRecording(mode);
-      _note('recording started (${mode.frameWidth}x${mode.frameHeight})');
+      _note('recording started (${mode.frameWidth}x${mode.frameHeight}, '
+          '$seconds s)');
       _ticker = Timer.periodic(const Duration(seconds: 1), (t) {
         if (!mounted) return;
-        setState(() => _remaining = _recordSeconds - t.tick);
+        setState(() => _remaining = seconds - t.tick);
       });
-      await Future<void>.delayed(const Duration(seconds: _recordSeconds));
+      await Future<void>.delayed(Duration(seconds: seconds));
       _ticker?.cancel();
       _ticker = null;
       if (_controller != c) throw StateError('camera closed while recording');
@@ -377,16 +470,18 @@ class _UsbDirectTestPageState extends State<UsbDirectTestPage> {
       final size = await File(file.path).length();
       final dir = await InspectionUploader.directory();
       final name =
-          'usbdirect_${mode.frameWidth}x${mode.frameHeight}_${mode.frameFormat.name}'
-          '_${DateTime.now().millisecondsSinceEpoch}.mp4';
-      await File(file.path).copy('${dir.path}/$name');
+          'usbdirect_${play ? 'quick' : 'rec'}_${mode.frameWidth}x${mode.frameHeight}_'
+          '${mode.frameFormat.name}_${DateTime.now().millisecondsSinceEpoch}.mp4';
+      final copy = await File(file.path).copy('${dir.path}/$name');
       final text = 'file: ${file.path}\n'
-          'size: ${(size / 1024).toStringAsFixed(0)} KB\n'
+          'size: ${(size / 1024).toStringAsFixed(0)} KB'
+          '${size < 20 * 1024 ? '  (tiny: probably no frames)' : ''}\n'
           'duration (wall clock, start to stop): ${wall.inMilliseconds} ms\n'
-          'copied to: ${dir.path}/$name\n'
+          'copied to: ${copy.path}\n'
           'check resolution and fps with: ffprobe <file>';
       _note('recording saved, $size bytes');
       if (mounted) setState(() => _result = text);
+      if (play && mounted) await _startClip(copy);
     } catch (e, st) {
       _noteError('record failed', e, st);
       _ticker?.cancel();
@@ -402,10 +497,60 @@ class _UsbDirectTestPageState extends State<UsbDirectTestPage> {
       if (mounted) {
         setState(() {
           _busy = false;
+          _recording = false;
           _remaining = 0;
         });
       }
     }
+  }
+
+  Future<void> _startClip(File f) async {
+    final vc = VideoPlayerController.file(f);
+    try {
+      await vc.initialize();
+      await vc.setLooping(true);
+      await vc.play();
+      _note('clip playback: ${vc.value.size.width.toInt()}x'
+          '${vc.value.size.height.toInt()}, '
+          '${vc.value.duration.inMilliseconds} ms');
+      if (!mounted) {
+        await vc.dispose();
+        return;
+      }
+      setState(() => _clip = vc);
+    } catch (e, st) {
+      _noteError('clip playback failed', e, st);
+      await vc.dispose();
+    }
+  }
+
+  Future<void> _showNativeLog() async {
+    try {
+      final r = await _channel.invokeMapMethod<String, Object?>('nativeLog');
+      final lines = [for (final l in (r?['lines'] as List?) ?? const []) '$l'];
+      if (!mounted) return;
+      setState(() {
+        _nativeLog = 'logcat exit ${r?['exit']}, ${r?['total']} lines total, '
+            '${lines.length} matched\n${lines.join('\n')}';
+      });
+    } catch (e, st) {
+      _noteError('native log failed', e, st);
+    }
+  }
+
+  Future<void> _clearNativeLog() async {
+    final stamp = DateTime.now().toIso8601String().substring(11, 19);
+    try {
+      final r = await _channel.invokeMapMethod<String, Object?>('clearNativeLog');
+      final exit = r?['exit'];
+      _note(exit == 0
+          ? 'native log cleared'
+          : 'logcat -c refused (exit $exit: ${r?['output']}). Log not cleared; '
+              'read it from $stamp onwards.');
+    } catch (e, st) {
+      _noteError('clear native log failed', e, st);
+    }
+    if (mounted) setState(() => _nativeLog = null);
   }
 
   Widget _deviceText(_UsbInfo d, ThemeData theme) => Column(
@@ -418,11 +563,83 @@ class _UsbDirectTestPageState extends State<UsbDirectTestPage> {
         ],
       );
 
+  String get _impellerText => !_impellerKnown
+      ? '…'
+      : _impeller == null
+          ? 'on (default, not set)'
+          : _impeller!
+              ? 'on'
+              : 'OFF (labImpeller=false)';
+
+  Widget _presetButtons(_UsbInfo d, ThemeData theme) {
+    final enabled = !_busy && d.hasPermission;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Open at preset', style: theme.textTheme.labelLarge),
+        Wrap(
+          spacing: 8,
+          children: [
+            for (final p in UvcCameraResolutionPreset.values)
+              FilledButton.tonal(
+                onPressed: enabled ? () => _openCamera(d, p) : null,
+                child: Text(p.name),
+              ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          [
+            for (final p in UvcCameraResolutionPreset.values)
+              '${p.name}: asks ${_presetAsk[p]}',
+            'Plugin 0.0.13 sorts sizes by (area - asked) from largest, so it '
+                'takes the largest size whatever the preset (see AI_LOG). '
+                'The mode actually used is shown after open.',
+          ].join('\n'),
+          style: theme.textTheme.bodySmall,
+        ),
+      ],
+    );
+  }
+
+  Widget _previewArea(UvcCameraController c, ThemeData theme) {
+    final m = c.value.previewMode;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Mode: ${m == null ? '?' : _modeText(m)}'
+          '${m == null ? '' : '  aspect ${m.aspectRatio.toStringAsFixed(3)}'}'
+          ' · preset ${_openPreset?.name} · texture id ${c.textureId}',
+        ),
+        const SizedBox(height: 4),
+        // Purple backing behind the texture: purple = the texture draws
+        // nothing (no frames, or frames not composited); white = widget is
+        // not laid out at all; video = fine.
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 360),
+            child: _MeasuredBox(
+              builder: (_) => Stack(
+                alignment: Alignment.center,
+                children: [
+                  const Positioned.fill(
+                    child: ColoredBox(color: Color(0xFF6A1B9A)),
+                  ),
+                  UvcCameraPreview(c),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final c = _controller;
-    final recording = _ready && (c?.value.isRecordingVideo ?? false);
     final cameras = _usb.where((u) => u.isVideo).toList();
     final others = _usb.where((u) => !u.isVideo).toList();
     return Scaffold(
@@ -442,7 +659,7 @@ class _UsbDirectTestPageState extends State<UsbDirectTestPage> {
           Text(
             'Lab test only. Plugin supported: ${_supported ?? '…'} · '
             'CAMERA permission: ${_cameraGranted ?? '…'} · '
-            '${cameras.length} camera(s)',
+            '${cameras.length} camera(s) · Impeller: $_impellerText',
             style: theme.textTheme.titleMedium,
           ),
           const SizedBox(height: 8),
@@ -457,28 +674,17 @@ class _UsbDirectTestPageState extends State<UsbDirectTestPage> {
                   children: [
                     _deviceText(d, theme),
                     const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      children: [
-                        OutlinedButton(
-                          onPressed: _busy ? null : () => _requestAccess(d),
-                          child: const Text('Request permissions'),
-                        ),
-                        FilledButton(
-                          onPressed: _busy || !d.hasPermission
-                              ? null
-                              : () => _openCamera(d),
-                          child: Text(_openKey == d.key
-                              ? 'Reopen preview'
-                              : 'Open preview'),
-                        ),
-                      ],
+                    OutlinedButton(
+                      onPressed: _busy ? null : () => _requestAccess(d),
+                      child: const Text('Request permissions'),
                     ),
                     if (!d.hasPermission)
                       const Padding(
                         padding: EdgeInsets.only(top: 4),
                         child: Text('Permission needed first'),
                       ),
+                    const SizedBox(height: 8),
+                    _presetButtons(d, theme),
                   ],
                 ),
               ),
@@ -500,28 +706,62 @@ class _UsbDirectTestPageState extends State<UsbDirectTestPage> {
             'asks "Open movement_capture_lab when this device is connected?", '
             'tick "Always" and tap OK.',
           ),
-          if (_ready && c != null) ...[
-            const SizedBox(height: 12),
-            Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 360),
-                child: UvcCameraPreview(c),
+          if (_dropHint != null) ...[
+            const SizedBox(height: 8),
+            Card(
+              color: theme.colorScheme.errorContainer,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(_dropHint!),
+                    const SizedBox(height: 8),
+                    FilledButton(
+                      onPressed: _busy || _lastCam == null || _lastPreset == null
+                          ? null
+                          : () => _openCamera(_lastCam!, _lastPreset!),
+                      child: Text('Reopen (${_lastPreset?.name})'),
+                    ),
+                  ],
+                ),
               ),
             ),
+          ],
+          if (_ready && c != null) ...[
+            const SizedBox(height: 12),
+            _previewArea(c, theme),
+            const SizedBox(height: 8),
+            if (_modes.isNotEmpty)
+              Text(
+                'Camera offers (${_modes.length}):\n'
+                '${_modes.map(_modeText).join('\n')}',
+                style: theme.textTheme.bodySmall,
+              ),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
+              runSpacing: 8,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 FilledButton.icon(
-                  onPressed: _busy || recording ? null : _record,
-                  icon: const Icon(Icons.fiber_manual_record),
-                  label: Text(recording
+                  onPressed: _busy || _recording
+                      ? null
+                      : () => _record(_quickSeconds, play: true),
+                  icon: const Icon(Icons.movie),
+                  label: Text(_recording && _remaining > 0 && _clip == null
                       ? 'Recording… $_remaining s'
-                      : 'Record $_recordSeconds s'),
+                      : 'Quick clip $_quickSeconds s'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _busy || _recording
+                      ? null
+                      : () => _record(_recordSeconds, play: false),
+                  icon: const Icon(Icons.fiber_manual_record),
+                  label: const Text('Record $_recordSeconds s'),
                 ),
                 OutlinedButton(
-                  onPressed: recording ? null : _close,
+                  onPressed: _recording ? null : _close,
                   child: const Text('Close camera'),
                 ),
               ],
@@ -530,6 +770,19 @@ class _UsbDirectTestPageState extends State<UsbDirectTestPage> {
           if (_result != null) ...[
             const SizedBox(height: 12),
             SelectableText(_result!),
+          ],
+          if (_clip != null && _clip!.value.isInitialized) ...[
+            const SizedBox(height: 8),
+            Text('Quick clip playback', style: theme.textTheme.labelLarge),
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 240),
+                child: AspectRatio(
+                  aspectRatio: _clip!.value.aspectRatio,
+                  child: VideoPlayer(_clip!),
+                ),
+              ),
+            ),
           ],
           const SizedBox(height: 16),
           Card(
@@ -547,6 +800,48 @@ class _UsbDirectTestPageState extends State<UsbDirectTestPage> {
             ),
           ),
           const SizedBox(height: 16),
+          Text('Native log (this app only)', style: theme.textTheme.titleMedium),
+          Wrap(
+            spacing: 8,
+            children: [
+              OutlinedButton(
+                onPressed: _showNativeLog,
+                child: const Text('Native log'),
+              ),
+              OutlinedButton(
+                onPressed: _nativeLog == null
+                    ? null
+                    : () async {
+                        await Clipboard.setData(
+                          ClipboardData(text: _nativeLog!),
+                        );
+                        _note('native log copied');
+                      },
+                child: const Text('Copy'),
+              ),
+              OutlinedButton(
+                onPressed: _clearNativeLog,
+                child: const Text('Clear log'),
+              ),
+            ],
+          ),
+          if (_nativeLog != null)
+            Container(
+              margin: const EdgeInsets.only(top: 8),
+              padding: const EdgeInsets.all(8),
+              constraints: const BoxConstraints(maxHeight: 320),
+              decoration: BoxDecoration(
+                border: Border.all(color: theme.dividerColor),
+              ),
+              child: SingleChildScrollView(
+                child: SelectableText(
+                  _nativeLog!,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(fontFamily: 'monospace', fontSize: 10),
+                ),
+              ),
+            ),
+          const SizedBox(height: 16),
           Text('Events and errors', style: theme.textTheme.titleMedium),
           const SizedBox(height: 4),
           if (_log.isEmpty) const Text('None yet'),
@@ -554,6 +849,48 @@ class _UsbDirectTestPageState extends State<UsbDirectTestPage> {
             SelectableText(line, style: theme.textTheme.bodySmall),
         ],
       ),
+    );
+  }
+}
+
+/// Wraps [builder]'s output and shows the size it was laid out at, so a
+/// zero-size or unbounded preview (H3) is visible on screen.
+class _MeasuredBox extends StatefulWidget {
+  const _MeasuredBox({required this.builder});
+
+  final WidgetBuilder builder;
+
+  @override
+  State<_MeasuredBox> createState() => _MeasuredBoxState();
+}
+
+class _MeasuredBoxState extends State<_MeasuredBox> {
+  final _key = GlobalKey();
+  Size? _size;
+
+  void _measure() {
+    final box = _key.currentContext?.findRenderObject() as RenderBox?;
+    final size = box != null && box.hasSize ? box.size : null;
+    if (size != _size && mounted) setState(() => _size = size);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
+    final s = _size;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        KeyedSubtree(key: _key, child: widget.builder(context)),
+        Text(
+          s == null
+              ? 'preview widget size: not laid out'
+              : 'preview widget size: ${s.width.toStringAsFixed(0)} x '
+                  '${s.height.toStringAsFixed(0)}'
+                  '${s.isEmpty ? '  (EMPTY: layout bug)' : ''}',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ],
     );
   }
 }

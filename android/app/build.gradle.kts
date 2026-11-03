@@ -27,6 +27,10 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // LAB ONLY (kiosk-08b): build switch to compare Impeller on/off.
+        // flutter run --release -PlabImpeller=false  (default: true)
+        manifestPlaceholders["enableImpeller"] =
+            (project.findProperty("labImpeller") ?: "true").toString()
     }
 
     buildTypes {

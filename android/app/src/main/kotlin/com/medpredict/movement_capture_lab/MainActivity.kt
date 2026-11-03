@@ -38,6 +38,9 @@ class MainActivity : FlutterActivity() {
                         }
                         "cameraPermissionGranted" -> result.success(cameraGranted())
                         "requestCameraPermission" -> requestCameraPermission(result)
+                        "impellerEnabled" -> result.success(impellerEnabled())
+                        "nativeLog" -> readNativeLog(result)
+                        "clearNativeLog" -> clearNativeLog(result)
                         "hasExternalCameraFeature" -> result.success(
                             packageManager.hasSystemFeature(
                                 PackageManager.FEATURE_CAMERA_EXTERNAL
@@ -141,6 +144,69 @@ class MainActivity : FlutterActivity() {
                 "hasPermission" to usb.hasPermission(d),
             )
         }
+    }
+
+    /**
+     * The `EnableImpeller` value baked into this build's manifest (lab build
+     * switch `-PlabImpeller=false`). `null` in the answer means "not set", which
+     * Flutter treats as the default (on).
+     */
+    private fun impellerEnabled(): Boolean? {
+        val info = packageManager.getApplicationInfo(
+            packageName,
+            PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA.toLong()),
+        )
+        val md = info.metaData ?: return null
+        val key = "io.flutter.embedding.android.EnableImpeller"
+        if (!md.containsKey(key)) return null
+        return when (val v = md.get(key)) {
+            is Boolean -> v
+            is String -> v.toBoolean()
+            else -> null
+        }
+    }
+
+    /** Runs a short command off the main thread and returns its output lines. */
+    private fun runLogcat(vararg args: String): Pair<Int, List<String>> {
+        val proc = ProcessBuilder(listOf("logcat") + args).redirectErrorStream(true).start()
+        val lines = proc.inputStream.bufferedReader().readLines()
+        return proc.waitFor() to lines
+    }
+
+    /**
+     * Last 200 lines of this app's own log that mention the USB camera stack.
+     * An app may read its own process log without READ_LOGS.
+     */
+    private fun readNativeLog(result: MethodChannel.Result) {
+        Thread {
+            try {
+                val (code, lines) = runLogcat("-d", "-v", "time", "--pid=${android.os.Process.myPid()}")
+                val keep = Regex(
+                    "UVCCamera|USBMonitor|libuvc|libusb|UvcCamera|ANativeWindow|uvc_|" +
+                        "ImageReader|SurfaceProducer|BufferQueue",
+                )
+                val out = lines.filter { keep.containsMatchIn(it) }.takeLast(200)
+                runOnUiThread {
+                    result.success(
+                        mapOf("exit" to code, "total" to lines.size, "lines" to out),
+                    )
+                }
+            } catch (e: Exception) {
+                runOnUiThread { result.error("LOGCAT_FAILED", e.toString(), null) }
+            }
+        }.start()
+    }
+
+    /** `logcat -c`. Android may refuse it for a normal app; the exit code says. */
+    private fun clearNativeLog(result: MethodChannel.Result) {
+        Thread {
+            try {
+                val (code, lines) = runLogcat("-c")
+                runOnUiThread { result.success(mapOf("exit" to code, "output" to lines)) }
+            } catch (e: Exception) {
+                runOnUiThread { result.error("LOGCAT_FAILED", e.toString(), null) }
+            }
+        }.start()
     }
 
     companion object {

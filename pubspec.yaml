@@ -19,6 +19,8 @@ dependencies:
   shared_preferences: ^2.5.6
   # LAB ONLY, TEMPORARY: Part A go/no-go test (kiosk-08). Never add to movement_capture/.
   uvccamera: 0.0.13
+  # LAB ONLY, TEMPORARY (kiosk-08b): plays the quick clip. Same constraint as the package.
+  video_player: ^2.9.2
 
 dev_dependencies:
   flutter_test:

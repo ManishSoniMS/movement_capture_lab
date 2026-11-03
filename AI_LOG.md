@@ -273,3 +273,30 @@
   adb logcat -d -v threadtime | grep -iE "AndroidRuntime|FATAL|DEBUG|libc|SIGSEGV|UnsatisfiedLink|uvc|USBMonitor|libusb"
   ```
   Repeat without the webcam, and once with `EnableImpeller=false` back in the manifest to compare.
+
+## 2026-11-03: USB preview blank + disconnect tooling (kiosk-08b, Revision 15 Part A round 2)
+
+**Files:** `lib/presentation/usb_direct_test_page.dart`, `android/.../MainActivity.kt`, `android/app/build.gradle.kts`, `android/app/src/main/AndroidManifest.xml`, `pubspec.yaml` (lab `video_player: ^2.9.2`, same constraint the package already uses; already resolved, so no new download). `movement_capture/` untouched, plugin not patched.
+
+**Findings (uvccamera 0.0.13, pub cache):**
+- **Why "medium" gave 1920x1080.** `UvcCameraNativeMethodCallHandler.java:52-58` maps presets to an area: min=Integer.MIN_VALUE, low=640x480, medium=1280x720, high=1920x1080, max=Integer.MAX_VALUE. `UvcCameraPlatform.java:412-419` computes `delta = w*h - desiredArea`, then sorts with `Integer.compare(r.second, l.second)`, which is descending, and takes element 0. That is the size with the largest signed delta, which is the largest area, for every preset. (For `min` the subtraction overflows, but it stays monotonic.) So the preset never narrows the choice: the plugin is meant to pick the closest area but picks the largest. Format is then MJPEG if `setPreviewSize` accepts it, else YUYV (`:451-466`). Not patched, per the prompt. On the 0C45:0261 the camera's max is 1080p, which fits what we saw; the "Camera offers" list on the card will confirm it on the device.
+- **Preview surface.** `UvcCameraPlatform.java:473-479`: `textureRegistry.createSurfaceProducer()`, `setSize(w,h)`, `getSurface()`, then `camera.setPreviewDisplay(surface)` and `startPreview()`. Dart side is `Texture(textureId:)` inside an `AspectRatio` (`uvccamera_preview.dart`). So H3 (layout) can only go wrong if the widget gets no size; the page now shows the measured size. No frame callback exists anywhere in the plugin API.
+- **Supported sizes.** The controller does not expose them, but `UvcCameraPlatformInterface.instance.getSupportedModes(cameraId)` does (not exported from `uvccamera.dart`; imported from `src/` in the lab with an ignore comment).
+- **Plugin bug, `setPreviewMode`:** Dart sends the key `previewMode` (`uvccamera_platform.dart:184-189`), Java reads `mode` (`UvcCameraNativeMethodCallHandler.java:364`). It always answers "mode is required". So the size can't be changed after open either. Not used on the page.
+- **Under Impeller:** the plugin's CHANGELOG says Impeller support was added, which does not prove it works on this phone. H1 stays open until the matrix is run.
+
+**Changes (lab only):**
+- Preset buttons min/low/medium/high/max, no automatic fallback. Each shows what area it asks for, plus the note about the sort. After open: mode used, texture id, and the camera's mode list.
+- Preview sits on a purple backing and its laid-out size is shown. Purple = texture draws nothing. White = not laid out. Size 0 is flagged "EMPTY".
+- Status and error events are logged (already were). Disconnect while open: log seconds since open, recording or previewing, mode and preset; close cleanly; hint "Dropped after N s at <mode>..."; a Reopen button, no auto reopen.
+- "Quick clip 3 s": records, copies to `inspection/`, shows size ("tiny" if < 20 KB), plays it back in a `VideoPlayer` on the page.
+- "Native log / Copy / Clear log": `MainActivity.kt` `nativeLog` runs `logcat -d -v time --pid=<own pid>`, keeps lines matching the prompt's regex, returns the last 200. `clearNativeLog` runs `logcat -c`; if Android refuses, the page says so and gives the time to read from.
+- Impeller build switch: `build.gradle.kts` sets `manifestPlaceholders["enableImpeller"]` from `-PlabImpeller` (default true); the `EnableImpeller` meta-data is on `<application>` (Flutter does not read it from the activity); the page shows the value via `impellerEnabled`.
+  - Verified on the merged release manifest: default `true`; both `-PlabImpeller=false` and `--android-project-arg=labImpeller=false` give `false`.
+  - Commands: `flutter run --release` (on); `flutter run --release --android-project-arg=labImpeller=false` (off). Rebuild is needed to switch.
+
+**Pros/cons:** Each run answers one question, no adb. Cons: `src/` import depends on plugin internals; `logcat -c` may be refused; the preset buttons can't produce 720p because of the plugin sort, so the matrix rows "medium/low" will all land on the camera's largest mode. To compare sizes the plugin must be patched or replaced (Part B decision, not done here).
+
+**Verification:** lab analyze 3 known infos; lab tests 7 pass; package analyze clean, package tests pass; release APK builds with Impeller on and off.
+
+**Device matrix (Manish): not run (needs a device).** Rows 1-6 from the prompt: hub/OTG x Impeller on/off x preset; columns preview, quick clip plays, disconnect after N s. Paste the "Native log" for failing rows. Note: because of the sort bug, rows 1-2 (medium vs low) should show the same mode; if they differ, the finding above is wrong.
