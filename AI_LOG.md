@@ -251,3 +251,25 @@
 - Checked here: lab `flutter analyze` shows only the 3 known infos; 7 lab tests pass; `flutter build apk --release` succeeds (148 MB; R8 accepts the rules). The APK carries `libUVCCamera.so`, `libuvc.so`, `libusb100.so` and `libjpeg-turbo1500.so` for arm64-v8a and armeabi-v7a. No package changes and no new package tests, as specified.
 - Pros: finds out cheaply whether the webcam and tablets work with userspace UVC. Cons: duration is wall-clock between start and stop, not read from the file (use `ffprobe`); the preset gives the nearest mode, not an exact 1280x720; the dependency adds about 2 MB per ABI and is removed in Part B.
 - Not run (needs a device): A-1 device list (Redmi Note 9, Tab S9 FE), A-2 permission prompt, A-3 preview (note the mode), A-4 10 s recording plays on a PC (note resolution and fps with `ffprobe`), A-5 unplug during preview and during recording, A-6 release build on the Tab S9 FE. Gate: if A-3 or A-4 fails on the Tab S9 FE, do not start Part B. Record results here.
+
+## 2026-11-03: USB direct test page fix (kiosk-08a, Revision 15 Part A fix)
+- Trigger: Manish ran the Part A page on the Redmi Note 9 with the webcam behind a USB-C hub. Screen showed 2 "UVC devices", `PermissionNotGranted`, then "open failed: Null check operator used on a null value", and an earlier debug run ended on a blank screen.
+- Baseline: uncommitted R14 and R15 Part A work committed to branch `wip/r13-r15a` (R14 `53fd8f9`, R15 Part A `70312e2`) and pushed. After the fix: package 264 tests pass, package analyze clean, lab 7 tests pass, root analyze 3 known infos, release APK builds.
+- Findings:
+  1. The plugin list is unfiltered. `UvcCameraPlatform.getDevices()` returns every USB device. `0BDA:8152` is the hub's Realtek Ethernet chip. The webcam is `0C45:0261` (class EF/02). The page now lists cameras (video-class interface, from the lab native channel) apart from "Other USB devices (not cameras)", with hex ids and per-interface class/subclass.
+  2. Order of permissions: Android 9+ denies USB access to video-class devices unless the app holds CAMERA. The page now asks CAMERA first (`requestCameraPermission`), then USB, and logs `UsbManager.hasPermission` before and after and the answer time (< 300 ms = no dialog shown). Open stays disabled until `hasPermission` is true.
+  3. The null check hid the real error. `UvcCameraController.initialize()` (uvccamera 0.0.13, `uvccamera_controller.dart` `_initialize`) catches its own failure, hands it to a completer nobody awaits, and returns normally. `value.isInitialized` stays false and `previewMode` stays null. The real exception then surfaces as an uncaught zone error and again from `dispose()`. The page now runs `initialize()` in `runZonedGuarded`, checks `isInitialized`, logs type/code/message/details, prints the stack with `debugPrintStack`, disposes a failed controller, and builds the preview only when `_ready`. Presets are tried medium, low, min.
+  4. Impeller: `EnableImpeller=false` in `AndroidManifest.xml` came from an earlier session of mine (see "Blank screen for ~6 s at launch", it was never committed before `70312e2`), added because a cold start took 6.2 s. Removed now. The debug blank screen happened with the opt-out on, and Flutter is removing the opt-out. Risk: the ~6 s first frame on the Redmi may come back with Impeller on.
+  5. Plugin start-up: `UvcCameraPlugin.onAttachedToEngine` creates `UvcCameraPlatform`, whose constructor calls `usbMonitor.register()`. So the USB monitor starts at app launch, not when the test page opens. The lab cannot change this without patching the plugin (not allowed). The page's own work (listing, streams, camera) starts only when the page opens and stops in `dispose()`.
+- Changes (lab only): `usb_direct_test_page.dart` rewritten; `MainActivity.kt` (`usbDevices`, `usbHasPermission`, `cameraPermissionGranted`, `requestCameraPermission`; `usbVideoDevices` now filters `usbDevices` and also returns `deviceName`, interfaces, `maxPowerMa`); `AndroidManifest.xml` (USB_DEVICE_ATTACHED filter + `res/xml/usb_camera_filter.xml`, Impeller opt-out removed; `launchMode` was already `singleTop`). `movement_capture/` untouched.
+- Pros: the page shows the real failure and the permission state. Cons: the attach filter makes Android offer the lab as the default app for any webcam (lab only); the "initialize swallowed" capture depends on plugin internals; recording length is still wall-clock because there is no video-metadata library.
+- Not run (needs a device): the launch tests below, and A1-1 to A1-7. The Redmi was asleep and locked over wifi adb, so `am start -W` hung and no timing could be taken.
+- Commands for Manish (launch crash):
+  ```sh
+  adb logcat -c
+  flutter run            # webcam plugged in, same hub
+  adb shell dumpsys activity exit-info com.medpredict.movement_capture_lab | head -40
+  adb logcat -b crash -d
+  adb logcat -d -v threadtime | grep -iE "AndroidRuntime|FATAL|DEBUG|libc|SIGSEGV|UnsatisfiedLink|uvc|USBMonitor|libusb"
+  ```
+  Repeat without the webcam, and once with `EnableImpeller=false` back in the manifest to compare.

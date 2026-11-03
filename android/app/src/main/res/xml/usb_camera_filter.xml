@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- LAB ONLY: lets the lab be the default app for USB webcams (MIUI fallback). -->
+<resources>
+    <!-- Any USB video-class device (UVC webcams) -->
+    <usb-device class="14" />
+    <!-- Composite webcams that report class EF/02 at device level (seen: 0C45:0261) -->
+    <usb-device vendor-id="3141" product-id="609" />
+</resources>

@@ -7,6 +7,8 @@ import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CameraMetadata
 import android.hardware.usb.UsbConstants
 import android.hardware.usb.UsbManager
+import android.Manifest
+import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -24,7 +26,18 @@ class MainActivity : FlutterActivity() {
                 try {
                     when (call.method) {
                         "camera2Cameras" -> result.success(camera2Cameras())
-                        "usbVideoDevices" -> result.success(usbVideoDevices())
+                        "usbVideoDevices" -> result.success(
+                            usbDevices().filter { it["isVideo"] == true }
+                        )
+                        "usbDevices" -> result.success(usbDevices())
+                        "usbHasPermission" -> {
+                            val name = call.argument<String>("deviceName")
+                            val usb = getSystemService(Context.USB_SERVICE) as UsbManager
+                            val device = usb.deviceList[name]
+                            result.success(device != null && usb.hasPermission(device))
+                        }
+                        "cameraPermissionGranted" -> result.success(cameraGranted())
+                        "requestCameraPermission" -> requestCameraPermission(result)
                         "hasExternalCameraFeature" -> result.success(
                             packageManager.hasSystemFeature(
                                 PackageManager.FEATURE_CAMERA_EXTERNAL
@@ -70,25 +83,68 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun usbVideoDevices(): List<Map<String, Any?>> {
+    private fun cameraGranted(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+            checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+
+    private var pendingCameraResult: MethodChannel.Result? = null
+
+    /** Asks for the CAMERA runtime permission; Android 9+ needs it before USB video access. */
+    private fun requestCameraPermission(result: MethodChannel.Result) {
+        if (cameraGranted()) {
+            result.success(true)
+            return
+        }
+        if (pendingCameraResult != null) {
+            result.error("PENDING", "A CAMERA request is already pending", null)
+            return
+        }
+        pendingCameraResult = result
+        requestPermissions(arrayOf(Manifest.permission.CAMERA), CAMERA_REQUEST)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == CAMERA_REQUEST) {
+            val granted = grantResults.isNotEmpty() &&
+                grantResults[0] == PackageManager.PERMISSION_GRANTED
+            pendingCameraResult?.success(granted)
+            pendingCameraResult = null
+        }
+    }
+
+    /** Every attached USB device; `isVideo` marks the ones with a video-class interface. */
+    private fun usbDevices(): List<Map<String, Any?>> {
         val usb = getSystemService(Context.USB_SERVICE) as UsbManager
-        return usb.deviceList.values
-            .filter { d ->
-                d.deviceClass == UsbConstants.USB_CLASS_VIDEO ||
-                    (0 until d.interfaceCount).any {
-                        d.getInterface(it).interfaceClass == UsbConstants.USB_CLASS_VIDEO
-                    }
+        return usb.deviceList.values.map { d ->
+            val interfaces = (0 until d.interfaceCount).map {
+                val i = d.getInterface(it)
+                "%02X/%02X".format(i.interfaceClass, i.interfaceSubclass)
             }
-            .map { d ->
-                mapOf(
-                    "name" to (d.productName ?: d.deviceName),
-                    "vendorId" to d.vendorId,
-                    "productId" to d.productId,
-                )
-            }
+            val isVideo = d.deviceClass == UsbConstants.USB_CLASS_VIDEO ||
+                (0 until d.interfaceCount).any {
+                    d.getInterface(it).interfaceClass == UsbConstants.USB_CLASS_VIDEO
+                }
+            val maxPower = if (d.configurationCount > 0) d.getConfiguration(0).maxPower else -1
+            mapOf(
+                "deviceName" to d.deviceName,
+                "name" to (d.productName ?: d.deviceName),
+                "vendorId" to d.vendorId,
+                "productId" to d.productId,
+                "isVideo" to isVideo,
+                "interfaces" to interfaces,
+                "maxPowerMa" to maxPower,
+                "hasPermission" to usb.hasPermission(d),
+            )
+        }
     }
 
     companion object {
         private const val CHANNEL = "lab/camera_diagnostics"
+        private const val CAMERA_REQUEST = 4711
     }
 }
