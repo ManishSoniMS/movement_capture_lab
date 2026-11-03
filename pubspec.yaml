@@ -17,6 +17,8 @@ dependencies:
   path_provider: ^2.1.6
   flutter_tts: ^4.2.5
   shared_preferences: ^2.5.6
+  # LAB ONLY, TEMPORARY: Part A go/no-go test (kiosk-08). Never add to movement_capture/.
+  uvccamera: 0.0.13
 
 dev_dependencies:
   flutter_test:

@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:movement_capture/movement_capture.dart';
 
+import 'usb_direct_test_page.dart';
+
 /// Compares what the Flutter camera plugin sees with what Android itself
 /// offers, and states the likely cause when the USB camera is missing.
 class CameraInfoPage extends StatefulWidget {
@@ -235,6 +237,16 @@ class _CameraInfoPageState extends State<CameraInfoPage> {
                     style: TextStyle(color: theme.colorScheme.error)),
               ],
               const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const UsbDirectTestPage(),
+                  ),
+                ),
+                icon: const Icon(Icons.usb),
+                label: const Text('Try USB camera directly (test)'),
+              ),
+              const SizedBox(height: 8),
               FilledButton.icon(
                 onPressed: () async {
                   await Clipboard.setData(ClipboardData(text: _asText(r)));

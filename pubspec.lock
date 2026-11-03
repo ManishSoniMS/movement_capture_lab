@@ -144,6 +144,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.2.2"
+  equatable:
+    dependency: transitive
+    description:
+      name: equatable
+      sha256: "3bce007a596ff8b3119c45d68aaef631272537c03d30e5d4534dd24bf4c5eaa2"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.1.0"
   fake_async:
     dependency: transitive
     description:
@@ -587,6 +595,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.0"
+  uvccamera:
+    dependency: "direct main"
+    description:
+      name: uvccamera
+      sha256: d47266897e71923f9a52bbcd4aa55cc891776441cd72257df69df453697e8917
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.0.13"
   vector_math:
     dependency: transitive
     description:
