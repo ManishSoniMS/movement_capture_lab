@@ -159,3 +159,9 @@ All thresholds are in config.
 **Decision:** `pickDefaultCamera` order: (1) the camera chosen in this session or by `stepCameras`, while present; (2) if any USB camera is connected, `preferredCameraId` only when it is a USB camera, else the first USB camera; (3) otherwise `preferredCameraId`, then front, then back.
 **Why:** The tablet is fixed in place and the USB webcam is what lets the operator frame the patient, so recording from it is the core feature. The lab saves the last camera picked (`lastCameraId`); one tablet pick used to override the USB camera in every later session.
 **Consequences:** An operator who wants the tablet camera while a USB camera is plugged in must pick it each session (the pick is kept for that session). `stepCameras` (lab: back camera for feet) stays a deliberate switch away from the USB camera and the lab switch says so.
+
+### D-034 · Keep rules ship with the package
+**Decision:** R8 keep rules for ML Kit, MediaPipe and WorkManager live in `movement_capture/android/consumer-rules.pro`, registered with `consumerProguardFiles`. Broad per library (`com.google.mlkit.**`, `com.google.mediapipe.**`, `androidx.work.**`, and so on).
+**Options:** (a) host-side rules: every host must copy them, and the kiosk app would crash first; (b) consumer rules: automatic for every host.
+**Why:** Release builds failed the support check (`mlKitUnavailable`, `handTrackingUnavailable`) because R8 removed classes these libraries load by name. The lab had only the WorkManager rules, so the kiosk app got none.
+**Consequences:** A slightly larger APK. Narrowing the rules needs a release-build device check after each change. Never fix this with `-dontshrink`, `-dontobfuscate` or `isMinifyEnabled = false`.

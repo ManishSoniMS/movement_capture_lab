@@ -44,6 +44,7 @@ class HandTracker(private val context: Context) {
                 (landmarker ?: create().also { landmarker = it })
                 true
             } catch (e: Throwable) {
+                android.util.Log.w("HandTracker", "hand landmarker failed to load", e)
                 false
             }
             main.post { result.success(ok) }

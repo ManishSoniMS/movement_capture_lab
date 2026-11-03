@@ -191,3 +191,40 @@
 **Checks:** package 241 tests pass, package analyze clean; lab 6 tests pass, root analyze has the 3 known infos.
 
 **Not run (needs a device):** skeleton alignment on built-in and USB camera with legs and feet points; right hand only, mirrored and unmirrored; no face marks live or in review; review playback sync; switch on: out and back within 2 s continues, out for good stops, deletes and restarts when back, repeated until `NeedsOperator`; preview frame rate with marks on, on the lowest-end device.
+
+## 2026-11-03: USB camera first over a saved tablet camera (kiosk-06, Step 3.1 only)
+
+**Decisions for the team (top):** Step 1 (which case A to E) was **not run**: the attached device was a phone (M2004J19PI) with no USB webcam, not the Galaxy Tab S9 FE. No `camera_android` patch, availability listener (3.3) or USB-unavailable warning (3.5) was done.
+
+**Files:** `movement_capture/lib/src/domain/camera_choice.dart` (`pickDefaultCamera` new `sessionChoiceId`, USB rule), `controller.dart` (`_startImpl` passes `sessionChoiceId: _selected?.id ?? stepChoice?.id`, `preferredId: config.preferredCameraId`), `lib/presentation/home_page.dart` (feet-back-camera switch subtitle, 3.2), tests in `camera_choice_test.dart`, `CHANGELOG.md`, `DECISIONS.md` D-033.
+
+**Why this approach:** one pure function holds the rule so every branch is unit-tested. Per-step cameras stay a deliberate choice (same priority as an operator pick).
+
+**3.4 review:** the first `Checking` is always `armed: false` (controller lines 555, 856), so the camera button is reachable before recording in every mode. Only re-arms after an interruption hide it; `NeedsOperator` shows it again. No change.
+
+**Checks:** red phase was a compile error (missing `sessionChoiceId`). 247 package tests pass, package analyze clean, root analyze 3 known infos.
+
+**Not verified:** all device checks (needs the Tab S9 FE with the webcam). Not updated: package README camera-selection text, `ARCHITECTURE.md` (no stream yet).
+
+## 2026-11-03: R8 keep rules ship with the package (kiosk-06 release-r8)
+
+**Trigger (Redmi Note 9, release build):** `ML Kit: false`, `mlKitUnavailable: ... PlatformException(InputImageConverterError, java.lang.NullPointerException: Attempt to invoke virtual method 'java.lang.Class java.lang.Object.getClass()' on a null object reference at ed3.<init>(r8-map-id-...)`, plus `handTrackingUnavailable`.
+
+**Files:** new `movement_capture/android/consumer-rules.pro`; `movement_capture/android/build.gradle.kts` (`consumerProguardFiles("consumer-rules.pro")`); lab `android/app/proguard-rules.pro` (WorkManager rules removed, comment only); new test `movement_capture/test/android_release_rules_test.dart`; `README.md` (Android setup), `CHANGELOG.md` (Fixed), `DECISIONS.md` D-034.
+
+**Why this approach:** the package owns the libraries that break, so it owns the rules. Hosts (the kiosk app) get them with no setup. Broad per-library keeps are the safe choice for libraries that load classes by name.
+
+**Pros/cons:** automatic and one place to maintain. Cost: bigger APK; narrowing needs a release device check.
+
+**Checks:** red phase: 10 new tests failed (file and Gradle line missing). After: 257 package tests pass, package analyze clean, root analyze 3 known infos. `flutter build apk --release` succeeds (146 MB). `configuration.txt` contains the package rules; `seeds.txt` counts: `com.google.mlkit` 2264, `com.google.mediapipe` 19932. No `missing_rules.txt`, so no extra `-dontwarn` needed.
+
+**Not verified (needs a device):** R13-1 to R13-7 (debug baseline on the Redmi Note 9, release support check, full-body, hands, face, Tab S9 FE with USB camera, cold start). Record results here.
+
+
+## 2026-11-03: Hands still failed in release; Flogger keep rule (kiosk-06 follow-up)
+- Trigger: user reported blank screen on launch. Redmi Note 9 (adb): debug build fine. Release build launches (no blank screen) and ML Kit passes, but support check still showed `handTrackingUnavailable`.
+- Cause (from logcat, after adding `Log.w` in `HandTracker.available`): `ExceptionInInitializerError` <- `IllegalStateException: no caller found on the stack for: jy` in `mediapipe.framework.Graph.<clinit>`. Flogger looks up its caller by class name; R8 renamed it.
+- Files: `movement_capture/android/consumer-rules.pro` (+Flogger keep), `HandTracker.kt` (log the load error), `test/android_release_rules_test.dart` (+Flogger line), CHANGELOG.
+- Tests: new line failed first, then 258 package tests pass.
+- Checked on device: release APK installed on Redmi Note 9, cold start OK, no `HandTracker` warning, support check `canRun: true`.
+- Not verified: hands scan end to end in release (R13-4), full-body (R13-3), face (R13-5), Tab S9 FE + USB camera (R13-6). Blank screen cause on the user's device is not confirmed beyond "release launches fine here".

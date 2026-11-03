@@ -15,6 +15,10 @@ All notable changes to `movement_capture`. The format follows [Keep a Changelog]
 - `blockOnPoorQuality` (default **false**): poor quality no longer stops the countdown or aborts a recording unless this is on.
 - After recording: overall result ("Good for analysis" / "Please record again" with the reason). `allowUseAnyway` (default on). `Reviewing.samples` became `Reviewing.quality`.
 
+### Fixed
+- Android release: MediaPipe hand tracking still failed after the keep rules (`IllegalStateException: no caller found on the stack`, from `Graph.<clinit>`). Flogger finds its caller by class name, and R8 renamed it. `consumer-rules.pro` now keeps `com.google.common.flogger.**`. `HandTracker` also logs the load failure (tag `HandTracker`).
+- Android release builds failed the support check (`mlKitUnavailable`, `handTrackingUnavailable`) or showed a blank screen on launch, because R8 removed classes that ML Kit, MediaPipe and WorkManager load by name. The package now ships `consumer-rules.pro`; the lab's copy of the WorkManager rules was removed.
+
 ## [0.9.0] · 2026-10-26
 ### Added
 - Review before upload: each recorded clip plays back with the tracked skeleton in sync; "Use this video", "Record again" or "Cancel" (`reviewBeforeUpload`, default on).

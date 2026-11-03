@@ -89,6 +89,7 @@ Both lines must be in **your app's** pubspec. Flutter ignores them inside a libr
 - `minSdk` must be **24** or higher.
 - Don't declare `RECORD_AUDIO` for this feature; audio is never recorded.
 - **Kiosks managed by an MDM** (for example Headwind MDM): pre-grant the CAMERA permission to the app.
+- **Android release builds:** R8 keep rules for ML Kit, MediaPipe and WorkManager ship with the package (`android/consumer-rules.pro`) and are applied automatically. Hosts need nothing extra. Don't add `-dontshrink`/`-dontobfuscate` or disable `consumerProguardFiles`.
 
 ### 3. iOS
 

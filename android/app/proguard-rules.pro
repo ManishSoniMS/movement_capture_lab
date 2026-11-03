@@ -1,5 +1,3 @@
-# WorkManager (pulled in by ML Kit) builds its Room database by reflection.
-# R8 strips the generated *_Impl classes, so the app crashed on launch in release.
--keep class androidx.work.impl.WorkDatabase_Impl { *; }
--keep class * extends androidx.room.RoomDatabase { *; }
--keep class androidx.work.** { *; }
+# Lab-only R8 rules. Keep rules for ML Kit, MediaPipe and WorkManager ship with
+# the movement_capture package (movement_capture/android/consumer-rules.pro).
+# Do not duplicate them here.

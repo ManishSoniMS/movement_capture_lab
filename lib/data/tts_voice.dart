@@ -26,7 +26,8 @@ class TtsVoice implements MovementCaptureVoice {
       if (available == true) {
         await _tts.setLanguage(language);
       } else {
-        debugPrint('TtsVoice: $language not available; using the default voice');
+        debugPrint(
+            'TtsVoice: $language not available; using the default voice');
       }
       await _tts.setSpeechRate(rate); // slower for elderly listeners
       await _tts.setVolume(1.0);
