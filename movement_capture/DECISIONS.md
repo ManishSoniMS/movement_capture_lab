@@ -154,3 +154,8 @@ All thresholds are in config.
 **Also:** `stopWhenOutOfFrame` (default off) reuses the existing abort path, limited to "subject left the frame" (full body: noPerson, outOfFrame; face: noFace; hands: noHands, and oneHand only when both hands are required; feet: none) with `outOfFrameStopAfter` (2 s, unconfirmed). `blockOnPoorQuality` on wins: any issue stops, as before. Both off: nothing stops and the review result reports the time out of frame.
 **Why:** The brief asked to remove the marks from the face only; the earlier change removed them everywhere. A separate switch lets a host stop on "nobody in frame" without making lighting or sharpness stop the recording.
 **Consequences:** The feet step cannot use the auto-stop (the screen says so). The team may want to revisit feet tracking.
+
+### D-033 · USB camera first when connected; a saved tablet camera no longer wins
+**Decision:** `pickDefaultCamera` order: (1) the camera chosen in this session or by `stepCameras`, while present; (2) if any USB camera is connected, `preferredCameraId` only when it is a USB camera, else the first USB camera; (3) otherwise `preferredCameraId`, then front, then back.
+**Why:** The tablet is fixed in place and the USB webcam is what lets the operator frame the patient, so recording from it is the core feature. The lab saves the last camera picked (`lastCameraId`); one tablet pick used to override the USB camera in every later session.
+**Consequences:** An operator who wants the tablet camera while a USB camera is plugged in must pick it each session (the pick is kept for that session). `stepCameras` (lab: back camera for feet) stays a deliberate switch away from the USB camera and the lab switch says so.

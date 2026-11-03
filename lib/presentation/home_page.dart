@@ -243,6 +243,8 @@ class _HomePageState extends State<HomePage> {
           ),
           SwitchListTile(
             title: const Text('Switch to back camera for the feet step'),
+            subtitle: const Text(
+                'Leaves the USB camera for that step, even if one is connected'),
             value: _s.feetUseBackCamera,
             onChanged: (v) => setState(() => _s.feetUseBackCamera = v),
           ),

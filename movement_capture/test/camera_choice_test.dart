@@ -32,9 +32,49 @@ void main() {
     expect(pickDefaultCamera(buildCameraChoices([back]))?.id, '0');
   });
 
-  test('uses the preferred camera when it is still connected', () {
-    final choices = buildCameraChoices([back, front, usbA]);
-    expect(pickDefaultCamera(choices, preferredId: '1')?.id, '1');
+  test('uses the preferred camera when no USB camera is connected', () {
+    final choices = buildCameraChoices([back, front]);
+    expect(pickDefaultCamera(choices, preferredId: '0')?.id, '0');
+  });
+
+  group('USB camera wins over a saved tablet camera', () {
+    test('saved tablet id + USB connected -> USB', () {
+      final choices = buildCameraChoices([back, front, usbA]);
+      expect(pickDefaultCamera(choices, preferredId: '1')?.id, '100');
+      expect(pickDefaultCamera(choices, preferredId: '0')?.id, '100');
+    });
+
+    test('saved USB id still present -> that one', () {
+      final choices = buildCameraChoices([back, front, usbA, usbB]);
+      expect(pickDefaultCamera(choices, preferredId: '101')?.id, '101');
+    });
+
+    test('saved USB id gone, another USB present -> the other USB', () {
+      final choices = buildCameraChoices([back, front, usbB]);
+      expect(pickDefaultCamera(choices, preferredId: '100')?.id, '101');
+    });
+
+    test('camera chosen this session is kept, even a tablet camera', () {
+      final choices = buildCameraChoices([back, front, usbA]);
+      expect(pickDefaultCamera(choices, sessionChoiceId: '1')?.id, '1');
+      expect(
+        pickDefaultCamera(choices, sessionChoiceId: '1', preferredId: '100')
+            ?.id,
+        '1',
+      );
+    });
+
+    test('session choice that is gone falls through to the USB rule', () {
+      final choices = buildCameraChoices([back, front, usbA]);
+      expect(pickDefaultCamera(choices, sessionChoiceId: '9')?.id, '100');
+    });
+
+    test('no USB: saved id, then front, then back', () {
+      final choices = buildCameraChoices([back, front]);
+      expect(pickDefaultCamera(choices, preferredId: '0')?.id, '0');
+      expect(pickDefaultCamera(choices, preferredId: '9')?.id, '1');
+      expect(pickDefaultCamera(buildCameraChoices([back]))?.id, '0');
+    });
   });
 
   test('ignores a preferred camera that has been unplugged', () {

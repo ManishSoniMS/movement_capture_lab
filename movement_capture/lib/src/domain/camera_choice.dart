@@ -52,18 +52,37 @@ List<CameraChoice> buildCameraChoices(List<CameraDescription> cameras) {
   return result;
 }
 
-/// The preferred camera if it is still present; otherwise the first USB
-/// camera; otherwise front; otherwise back. Null only if [choices] is empty.
+/// Picks the camera to open.
+///
+/// 1. [sessionChoiceId]: a camera the operator chose in this session (or a
+///    deliberate per-step choice) is kept while it is still present.
+/// 2. If any USB camera is connected, [preferredId] is used only when it is a
+///    USB camera; otherwise the first USB camera. A saved tablet camera must
+///    not hide the USB camera, which is the core capture setup.
+/// 3. Otherwise [preferredId] if present, then front, then back.
+///
+/// Null only if [choices] is empty.
 CameraChoice? pickDefaultCamera(
   List<CameraChoice> choices, {
   String? preferredId,
+  String? sessionChoiceId,
 }) {
   if (choices.isEmpty) return null;
-  if (preferredId != null) {
+  CameraChoice? byId(String? id) {
+    if (id == null) return null;
     for (final c in choices) {
-      if (c.id == preferredId) return c;
+      if (c.id == id) return c;
     }
+    return null;
   }
+
+  final session = byId(sessionChoiceId);
+  if (session != null) return session;
+
+  final preferred = byId(preferredId);
+  final hasUsb = choices.any((c) => c.isExternal);
+  if (preferred != null && (!hasUsb || preferred.isExternal)) return preferred;
+
   for (final kind in CameraKind.values) {
     for (final c in choices) {
       if (c.kind == kind) return c;

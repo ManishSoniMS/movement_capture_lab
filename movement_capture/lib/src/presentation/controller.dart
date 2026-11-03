@@ -443,8 +443,10 @@ class MovementCaptureController extends ChangeNotifier {
       final stepChoice = _firstOfKind(choices, config.stepCameras[currentStep]);
       final choice = pickDefaultCamera(
         choices,
-        preferredId:
-            _selected?.id ?? stepChoice?.id ?? config.preferredCameraId,
+        // Per-step cameras stay a deliberate choice; the saved preferred id
+        // no longer hides a connected USB camera.
+        sessionChoiceId: _selected?.id ?? stepChoice?.id,
+        preferredId: config.preferredCameraId,
       );
       if (choice == null) {
         _setState(const CameraUnavailable(CameraFailure.noCamera));

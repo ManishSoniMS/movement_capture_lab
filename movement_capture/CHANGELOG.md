@@ -4,6 +4,7 @@ All notable changes to `movement_capture`. The format follows [Keep a Changelog]
 
 ## [Unreleased]
 
+- **Camera pick:** a connected USB camera now wins over a saved `preferredCameraId` that points at a tablet camera. `pickDefaultCamera` gets `sessionChoiceId` (a camera chosen in this session or per step is kept); `preferredId` is honoured when it is a USB camera or when no USB camera is connected. Before, a saved tablet camera hid the USB camera on every later session.
 - `ScanSelection` + `ScanTypePicker`: one scan type at a time, four large tiles (border, check mark and colour), Start off until a tile is chosen, nothing pre-selected. New strings `scanTypeTitle`, `scanTypeStart`, `scanTypeSelected`.
 - `MovementCaptureConfig.showDetails` (default true, unconfirmed): hides the step counter and the debug panel on the camera screen. Quality checks are unaffected.
 - Tracking marks removed: no skeleton, face boxes, contours, hand points or tracker guide on the picture. The fixed safe-zone box stays. Removed `showSkeleton`, `skeletonMinLikelihood` and the skeleton colours in `MovementCaptureStyle`. **Superseded by the next two entries:** the brief meant the face only.
