@@ -56,4 +56,18 @@ void main() {
     expect(s.summary(), contains('marks=false'));
     expect(s.summary(), contains('stopOutOfFrame=true'));
   });
+
+  test(
+      'marks in review defaults to off, round-trips, reaches config and summary',
+      () async {
+    SharedPreferences.setMockInitialValues({});
+    expect(LabSettings().showSkeletonInReview, isFalse);
+    expect(LabSettings().toConfig().showSkeletonInReview, isFalse);
+    expect(await PrefsSettingsStore().loadShowSkeletonInReview(), isFalse);
+    await PrefsSettingsStore().saveShowSkeletonInReview(true);
+    expect(await PrefsSettingsStore().loadShowSkeletonInReview(), isTrue);
+    final s = LabSettings()..showSkeletonInReview = true;
+    expect(s.toConfig().showSkeletonInReview, isTrue);
+    expect(s.summary(), contains('marksInReview=true'));
+  });
 }

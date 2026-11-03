@@ -255,6 +255,8 @@ Cancel is available on every screen, and so is the system back gesture. If a rec
 | `hands`    | Both hands visible (MediaPipe, 21 points per hand), inside the box; lighting | 21 points per hand: `handedness`, `side`, `score`                       |
 | `feet`     | Lighting only                                           | None                                                                                 |
 
+**What is in the video.** The recorded video never contains tracking marks. Marks are drawn on screen only, live; with `showSkeletonInReview: true` they're also drawn over the review playback. The uploaded file is the camera's own picture.
+
 Face, hands and feet are skippable by default. The tracking marks draw the body skeleton (with leg and foot points), and the two hands in the hands step. The face is never marked, in any step, live or in review. The feet step tracks nothing, so its marks come only from the full-body skeleton. Visibility is independent of the debug overlay and of `showDetails`.
 
 ---
@@ -357,6 +359,7 @@ All fields of `MovementCaptureConfig` (all optional):
 | `allowRecordingWithoutLiveChecks`                                    | `true`                          | If the device can't check while recording: record anyway and report `liveChecks=false` (`false` = show an error) |
 | `reviewBeforeUpload`                                                 | `true`                          | Show each clip for approval before upload                                                                        |
 | `showSkeleton`                                                       | `true`                          | Draw the tracking marks: body skeleton (arms, legs, feet points) and hand points. Never the face. Not hidden by `showDetails` |
+| `showSkeletonInReview`                                               | `false`                         | Also draw the marks over the review playback (needs `showSkeleton`). Off: the playback is the plain video. The recorded video never contains marks either way |
 | `stopWhenOutOfFrame`                                                 | `false`                         | Stop recording (clip deleted, step restarts when back) if the subject is out of frame longer than `outOfFrameStopAfter`; cancels the countdown too. Ignored when `blockOnPoorQuality` is on and on the feet step |
 | `outOfFrameStopAfter`                                                | 2 s (**unconfirmed**)           | How long the subject may be out of frame while recording before it stops. The warning shows after `violationGrace` |
 | `skeletonMinLikelihood`                                              | 0.2                             | Points below this are hidden; up to 0.7 they are drawn faded                                                     |

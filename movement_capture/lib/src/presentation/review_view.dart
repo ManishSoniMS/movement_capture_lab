@@ -98,7 +98,7 @@ class _ReviewViewState extends State<ReviewView> {
     final flip =
         config.reviewMirrorFor(widget.review.cameraKind, defaultTargetPlatform);
     final showSkeleton =
-        config.showSkeleton && widget.review.samples.isNotEmpty;
+        reviewShowsMarks(config) && widget.review.samples.isNotEmpty;
     final quality = widget.review.quality;
     final good = quality.passes;
     const tall = Size(0, 56);

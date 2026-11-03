@@ -39,6 +39,9 @@ class _HomePageState extends State<HomePage> {
     _store.loadStopWhenOutOfFrame().then((v) {
       if (mounted) setState(() => _s.stopWhenOutOfFrame = v);
     });
+    _store.loadShowSkeletonInReview().then((v) {
+      if (mounted) setState(() => _s.showSkeletonInReview = v);
+    });
   }
 
   Future<void> _runSupportCheck() async {
@@ -435,6 +438,20 @@ class _HomePageState extends State<HomePage> {
                 'Body and hand points on the picture. Never the face'),
             value: _s.showSkeleton,
             onChanged: (v) => setState(() => _s.showSkeleton = v),
+          ),
+          SwitchListTile(
+            key: const ValueKey('show-marks-in-review'),
+            title: const Text('Marks in review'),
+            subtitle: const Text(
+                'Also draw the marks over the review playback. The recorded '
+                'video never contains them'),
+            value: _s.showSkeleton && _s.showSkeletonInReview,
+            onChanged: _s.showSkeleton
+                ? (v) {
+                    setState(() => _s.showSkeletonInReview = v);
+                    _store.saveShowSkeletonInReview(v);
+                  }
+                : null,
           ),
           SwitchListTile(
             title: const Text('Debug overlay'),

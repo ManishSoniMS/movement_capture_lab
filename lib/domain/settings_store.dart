@@ -8,4 +8,8 @@ abstract interface class SettingsStore {
   /// saved.
   Future<bool> loadStopWhenOutOfFrame();
   Future<void> saveStopWhenOutOfFrame(bool value);
+
+  /// "Marks in review". Defaults to false when nothing was saved.
+  Future<bool> loadShowSkeletonInReview();
+  Future<void> saveShowSkeletonInReview(bool value);
 }

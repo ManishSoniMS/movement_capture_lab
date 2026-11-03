@@ -38,6 +38,11 @@ class LabSettings {
   /// Tracking marks (body skeleton and hand points, never the face).
   bool showSkeleton = true;
 
+  /// Also draw the marks over the review playback. Off by default: the
+  /// recorded video never contains marks. Persisted by the home page through
+  /// a SettingsStore.
+  bool showSkeletonInReview = false;
+
   /// One scan type per session; nothing is pre-selected.
   final ScanSelection scan = ScanSelection();
 
@@ -90,6 +95,7 @@ class LabSettings {
         blockOnPoorQuality: blockOnPoorQuality,
         stopWhenOutOfFrame: stopWhenOutOfFrame,
         showSkeleton: showSkeleton,
+        showSkeletonInReview: showSkeletonInReview,
         safeZoneInset: safeZoneInset,
         minLandmarkLikelihood: minLikelihood,
         minMeanLuma: minLuma.round(),
@@ -114,7 +120,7 @@ class LabSettings {
       'interval=${analysisIntervalMs < 1 ? 'auto' : '${analysisIntervalMs.round()}ms'} '
       'mirror(usb/front/back)=${mirrorExternal ?? 'auto'}/${mirrorFront ?? 'auto'}/${mirrorBack ?? 'auto'} '
       'orientation=${orientation.name} noLiveChecks=$allowNoLiveChecks blockOnPoorQuality=$blockOnPoorQuality '
-      'stopOutOfFrame=$stopWhenOutOfFrame marks=$showSkeleton '
+      'stopOutOfFrame=$stopWhenOutOfFrame marks=$showSkeleton marksInReview=$showSkeletonInReview '
       'scan=${scan.selected?.name ?? 'none'} details=$showCameraDetails '
       'closeUp=${closeUpDurationS.round()}s feetBack=$feetUseBackCamera '
       'hands=$handTracking/${requireBothHands ? 'both' : 'one'} '

@@ -165,3 +165,9 @@ All thresholds are in config.
 **Options:** (a) host-side rules: every host must copy them, and the kiosk app would crash first; (b) consumer rules: automatic for every host.
 **Why:** Release builds failed the support check (`mlKitUnavailable`, `handTrackingUnavailable`) because R8 removed classes these libraries load by name. The lab had only the WorkManager rules, so the kiosk app got none.
 **Consequences:** A slightly larger APK. Narrowing the rules needs a release-build device check after each change. Never fix this with `-dontshrink`, `-dontobfuscate` or `isMinifyEnabled = false`.
+
+### D-035 · Tracking marks are a live aid only
+**Decision:** Body and hand marks are drawn on screen while the person positions themselves and records. They are not drawn over the review playback unless `showSkeletonInReview` is on (default off), and they are never in the recorded file. With the switch off the controller keeps no review samples.
+**Options:** (a) live only, review opt-in (chosen); (b) burn the marks into the video. Rejected: it would change the clip the backend analyses, and it costs an encode pass.
+**Why:** The backend runs its own analysis on the raw video; the review showing lines made it look as if they were in the clip.
+**Consequences:** `landmarks.json` and the upload payload are unchanged. Tests guard that `lib/` has no frame-to-image or muxer/codec code that could composite marks.

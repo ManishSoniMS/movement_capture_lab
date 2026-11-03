@@ -45,6 +45,7 @@ class MovementCaptureConfig {
     this.stopWhenOutOfFrame = false,
     this.outOfFrameStopAfter = const Duration(seconds: 2),
     this.showSkeleton = true,
+    this.showSkeletonInReview = false,
     this.skeletonMinLikelihood = 0.2,
     this.showDetails = true,
     this.allowUseAnyway = true,
@@ -176,6 +177,11 @@ class MovementCaptureConfig {
   /// points) and hand points. Never the face. Independent of [showDetails]
   /// and of the debug overlay.
   final bool showSkeleton;
+
+  /// Draws the body and hand marks over the review playback. Off by default:
+  /// marks are an on-screen aid while recording, and the uploaded video never
+  /// contains them. Needs [showSkeleton] too.
+  final bool showSkeletonInReview;
 
   /// Points below this likelihood are not drawn; up to 0.7 they are drawn
   /// faded. The quality checks still use [minLandmarkLikelihood].

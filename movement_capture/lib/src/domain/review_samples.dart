@@ -1,3 +1,4 @@
+import 'config.dart';
 import 'pose_topology.dart';
 
 /// One skeleton sample kept for the review, [tMs] = ms since recording start.
@@ -22,3 +23,8 @@ OverlayFrame? overlayAt(List<TimedOverlay> samples, int positionMs) {
   }
   return samples[lo].frame;
 }
+
+/// Whether the review playback draws tracking marks. Marks are an on-screen
+/// aid only; the recorded file never contains them.
+bool reviewShowsMarks(MovementCaptureConfig c) =>
+    c.showSkeleton && c.showSkeletonInReview;

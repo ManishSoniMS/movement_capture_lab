@@ -981,7 +981,7 @@ class MovementCaptureController extends ChangeNotifier {
             problems: reading.problems,
           ));
         }
-        if (config.reviewBeforeUpload && config.showSkeleton) {
+        if (config.reviewBeforeUpload && reviewShowsMarks(config)) {
           _reviewSamples.add(
               TimedOverlay(_recordClock.elapsedMilliseconds, check.overlay));
         }
