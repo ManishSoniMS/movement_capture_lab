@@ -5,12 +5,14 @@ import 'dart:math';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 
+import '../data/default_camera_catalog.dart';
 import '../data/file_capture_storage.dart';
 import '../data/mlkit_frame_analyzer.dart';
 import '../domain/body_sides.dart';
+import '../domain/camera_catalog.dart';
 import '../domain/camera_choice.dart';
+import '../domain/camera_gateway.dart';
 import '../domain/capture_issue.dart';
 import '../domain/capture_state.dart';
 import '../domain/capture_step.dart';
@@ -47,10 +49,15 @@ class MovementCaptureController extends ChangeNotifier {
     required MovementUploader uploader,
     CaptureStorage storage = const FileCaptureStorage(),
     FrameAnalyzerFactory analyzerFactory = MlKitFrameAnalyzer.new,
+    CameraCatalog catalog = const DefaultCameraCatalog(),
+    CameraGatewayFactory? gatewayFactory,
     this.onCameraChanged,
+    this.onCameraIdChanged,
     bool lowMemoryDevice = false,
   })  : _storage = storage,
         _analyzerFactory = analyzerFactory,
+        _catalog = catalog,
+        _gatewayFactoryOverride = gatewayFactory,
         _quality = QualityTimer(grace: config.violationGrace),
         _statusTracker = QualityStatusTracker(config.qualityHold),
         _outOfFrame = OutOfFrameTimer(
@@ -77,6 +84,12 @@ class MovementCaptureController extends ChangeNotifier {
   final MovementCaptureConfig config;
   final CaptureStorage _storage;
   final FrameAnalyzerFactory _analyzerFactory;
+  final CameraCatalog _catalog;
+  final CameraGatewayFactory? _gatewayFactoryOverride;
+
+  CameraGateway _gatewayFor(CameraChoice c) =>
+      _gatewayFactoryOverride?.call(c) ??
+      defaultCameraGateway(c, config, analysisInterval: analysisInterval);
   final QualityTimer _quality;
   final QualityStatusTracker _statusTracker;
   final OutOfFrameTimer _outOfFrame;
@@ -93,7 +106,13 @@ class MovementCaptureController extends ChangeNotifier {
   final Duration analysisInterval;
 
   /// Fired only when the operator picks a camera from the list.
+  /// Only called for cameras that have a plugin [CameraDescription]; direct
+  /// USB cameras have none. Prefer [onCameraIdChanged].
   final void Function(CameraDescription camera)? onCameraChanged;
+
+  /// Fired only when the operator picks a camera from the list, for every
+  /// backend. Pass the id back as `preferredCameraId` next time.
+  final void Function(String cameraId)? onCameraIdChanged;
 
   /// Latest analysis numbers, for the debug overlay.
   final ValueNotifier<FrameMetrics?> metrics = ValueNotifier(null);
@@ -127,8 +146,14 @@ class MovementCaptureController extends ChangeNotifier {
   CaptureState _state = const Initializing();
   CaptureState get state => _state;
 
-  CameraController? _camera;
-  CameraController? get camera => _camera;
+  CameraGateway? _camera;
+  CameraGateway? get camera => _camera;
+  StreamSubscription<CameraLost>? _lostSub;
+
+  /// True after a USB camera was lost or refused and the built-in camera
+  /// took over. The screen shows a notice.
+  bool get usbFallbackActive => _usbFallback;
+  bool _usbFallback = false;
   FrameAnalyzer? _analyzer;
 
   List<CameraChoice> _choices = const [];
@@ -248,28 +273,6 @@ class MovementCaptureController extends ChangeNotifier {
   final List<QualitySample> _qualitySamples = [];
   final List<TimedOverlay> _reviewSamples = [];
 
-  static const Set<String> _permissionCodes = {
-    'CameraAccessDenied',
-    'CameraAccessDeniedWithoutPrompt',
-    'CameraAccessRestricted',
-  };
-
-  static const Map<DeviceOrientation, int> _orientationDegrees = {
-    DeviceOrientation.portraitUp: 0,
-    DeviceOrientation.landscapeLeft: 90,
-    DeviceOrientation.portraitDown: 180,
-    DeviceOrientation.landscapeRight: 270,
-  };
-
-  /// The orientation CameraPreview uses to rotate the Android preview.
-  /// Must match it exactly, or the analysed frames are rotated wrongly.
-  static DeviceOrientation _previewOrientation(CameraValue v) =>
-      v.isRecordingVideo
-          ? (v.recordingOrientation ?? v.deviceOrientation)
-          : (v.previewPauseOrientation ??
-              v.lockedCaptureOrientation ??
-              v.deviceOrientation);
-
   // ------------------------------------------------------------- queueing
 
   /// Enqueues [operation]. Unexpected errors are logged, never thrown, so one
@@ -285,7 +288,7 @@ class MovementCaptureController extends ChangeNotifier {
   void _requestFail(
     CameraFailure reason, {
     int? epoch,
-    CameraController? camera,
+    CameraGateway? camera,
   }) {
     unawaited(_serial(() async {
       if (_disposed) return;
@@ -311,7 +314,7 @@ class MovementCaptureController extends ChangeNotifier {
     if (_disposed) return;
     try {
       await _enumerate();
-    } on CameraException catch (e) {
+    } on CameraGatewayException catch (e) {
       debugPrint('movement_capture: refresh failed ${e.code}');
     }
   }
@@ -453,8 +456,8 @@ class MovementCaptureController extends ChangeNotifier {
         return;
       }
       await _open(choice);
-    } on CameraException catch (e) {
-      debugPrint('movement_capture: init failed ${e.code} ${e.description}');
+    } on CameraGatewayException catch (e) {
+      debugPrint('movement_capture: init failed ${e.code} ${e.message}');
       await _releaseCamera();
       _setState(CameraUnavailable(_failureFor(e)));
     } finally {
@@ -470,13 +473,16 @@ class MovementCaptureController extends ChangeNotifier {
     }
     await _switchCameraImpl(choice);
     if (!_disposed && _camera != null) {
-      onCameraChanged?.call(choice.description);
+      final d = choice.description;
+      if (d != null) onCameraChanged?.call(d);
+      onCameraIdChanged?.call(choice.id);
     }
   }
 
   /// Closes the current camera and opens [choice] for the current step.
   Future<void> _switchCameraImpl(CameraChoice choice) async {
     _starting = true;
+    _usbFallback = false;
     _setState(const Initializing());
     try {
       _newPhase();
@@ -484,7 +490,7 @@ class MovementCaptureController extends ChangeNotifier {
       await _releaseCamera();
       _restarts = 0;
       await _open(choice);
-    } on CameraException catch (e) {
+    } on CameraGatewayException catch (e) {
       debugPrint('movement_capture: switch to ${choice.id} failed ${e.code}');
       await _releaseCamera();
       _setState(CameraUnavailable(_failureFor(e)));
@@ -497,10 +503,9 @@ class MovementCaptureController extends ChangeNotifier {
   // ---------------------------------------------------------- camera setup
 
   Future<List<CameraChoice>> _enumerate() async {
-    final cams = await availableCameras();
+    _choices = await _catalog.list();
     debugPrint('movement_capture: cameras = '
-        '${cams.map((c) => '${c.name}/${c.lensDirection.name}/${c.sensorOrientation}°').join(', ')}');
-    _choices = buildCameraChoices(cams);
+        '${_choices.map((c) => c.id).join(', ')}');
     if (!_disposed) notifyListeners();
     return _choices;
   }
@@ -520,16 +525,16 @@ class MovementCaptureController extends ChangeNotifier {
       sideChoice: () => sideChoiceFor(currentStep),
       framesMirrored: () => _fileMirrored);
 
-  /// Throws CameraException on failure; callers handle it.
+  /// Throws [CameraGatewayException] on failure; callers handle it.
   Future<void> _open(CameraChoice choice) async {
     _selected = choice;
-    final cam = CameraController(
-      choice.description,
-      config.resolution,
-      enableAudio: false,
-      imageFormatGroup:
-          _isIOS ? ImageFormatGroup.bgra8888 : ImageFormatGroup.nv21,
-    );
+    if (choice.isExternal) _usbFallback = false;
+    if (choice.isUsbDirect && !await _catalog.hasUsbPermission(choice)) {
+      if (_disposed) return;
+      _setState(const CameraUnavailable(CameraFailure.usbPermissionNeeded));
+      return;
+    }
+    final cam = _gatewayFor(choice);
     _camera = cam;
     await cam.initialize(); // may show the permission prompt
     // Nothing else can release `cam` meanwhile (serial queue), but the screen
@@ -541,13 +546,13 @@ class MovementCaptureController extends ChangeNotifier {
       } catch (_) {}
       return;
     }
-    cam.addListener(_onCameraValue);
-    final size = cam.value.previewSize;
-    _cameraSizeOk = size == null ||
+    _lostSub = cam.lost.listen((l) => _onLost(cam, l));
+    final size = cam.frameSize;
+    _cameraSizeOk = size.shortSide == 0 ||
         cameraIsGoodEnough(
             config: config,
-            width: size.width.round(),
-            height: size.height.round(),
+            width: size.width,
+            height: size.height,
             fps: config.minCameraFps);
     cameraWeak.value = !_cameraSizeOk;
     _fpsMeter = FrameRateMeter(const Duration(seconds: 2));
@@ -561,17 +566,15 @@ class MovementCaptureController extends ChangeNotifier {
     if (choice == null || cam == null) return config.cameraRotationDegrees ?? 0;
     return analysisRotationDegrees(
       kind: choice.kind,
-      sensorOrientation: choice.description.sensorOrientation,
-      screenDegrees: _orientationDegrees[_previewOrientation(cam.value)] ?? 0,
+      sensorOrientation: cam.sensorOrientation,
+      screenDegrees: cam.previewOrientationDegrees,
       configRotation: config.cameraRotationDegrees,
       isIOS: _isIOS,
     );
   }
 
-  CameraFailure _failureFor(CameraException e) =>
-      _permissionCodes.contains(e.code)
-          ? CameraFailure.permissionDenied
-          : CameraFailure.other;
+  CameraFailure _failureFor(CameraGatewayException e) =>
+      e.permissionDenied ? CameraFailure.permissionDenied : CameraFailure.other;
 
   // --------------------------------------------------------------- phases
 
@@ -590,9 +593,9 @@ class MovementCaptureController extends ChangeNotifier {
       interruptedOutOfFrame: outOfFrameStop,
     ));
     try {
-      if (!cam.value.isStreamingImages) await cam.startImageStream(_onFrame);
+      if (!cam.isStreaming) await cam.startImageStream(_onFrame);
       _armWatchdog();
-    } on CameraException catch (e) {
+    } on CameraGatewayException catch (e) {
       debugPrint('movement_capture: image stream failed ${e.code}');
       await _failImpl(CameraFailure.other);
     }
@@ -644,18 +647,18 @@ class MovementCaptureController extends ChangeNotifier {
     try {
       // startVideoRecording(onAvailable:) starts its own image stream and
       // throws if one is already running.
-      if (cam.value.isStreamingImages) await cam.stopImageStream();
+      if (cam.isStreaming) await cam.stopImageStream();
       _newPhase();
       _liveChecks = true;
       try {
-        await cam.startVideoRecording(onAvailable: _onFrame);
-      } on CameraException catch (e) {
+        await cam.startRecording(onFrame: _onFrame);
+      } on CameraGatewayException catch (e) {
         if (!config.allowRecordingWithoutLiveChecks) rethrow;
         // Some devices cannot record and send frames at the same time.
         debugPrint('movement_capture: recording with frames failed '
             '(${e.code}); recording without live checks');
         _liveChecks = false;
-        await cam.startVideoRecording();
+        await cam.startRecording();
       }
       if (_disposed) return; // teardown (queued next) deletes the file
       _capturedAtUtc = DateTime.now().toUtc();
@@ -689,7 +692,7 @@ class MovementCaptureController extends ChangeNotifier {
         ));
       });
       if (_liveChecks) _armWatchdog();
-    } on CameraException catch (e) {
+    } on CameraGatewayException catch (e) {
       debugPrint('movement_capture: start recording failed ${e.code}');
       _busyTransition = false;
       await _failImpl(config.allowRecordingWithoutLiveChecks
@@ -716,10 +719,10 @@ class MovementCaptureController extends ChangeNotifier {
       _track = null;
       _qualitySamples.clear();
       _reviewSamples.clear();
-      final raw = await cam.stopVideoRecording();
-      await _storage.deletePath(raw.path);
+      final rawPath = await cam.stopRecording();
+      await _storage.deletePath(rawPath);
       _restarts++;
-    } on CameraException catch (e) {
+    } on CameraGatewayException catch (e) {
       debugPrint('movement_capture: abort failed ${e.code}');
       _busyTransition = false;
       await _failImpl(CameraFailure.other);
@@ -753,17 +756,17 @@ class MovementCaptureController extends ChangeNotifier {
     try {
       _stopRecordingTimers();
       _recordedDuration = _recordClock.elapsed;
-      final raw = await cam.stopVideoRecording();
-      debugPrint('movement_capture: raw file at ${raw.path}');
+      final rawPath = await cam.stopRecording();
+      debugPrint('movement_capture: raw file at $rawPath');
       _newPhase();
-      video = await _storage.adopt(raw.path);
+      video = await _storage.adopt(rawPath);
       final track = _track;
       _track = null;
       if (track != null && !track.isEmpty) {
         landmarks = await _storage
             .writeLandmarks(jsonEncode(track.toJson(mirrored: _fileMirrored)));
       }
-    } on CameraException catch (e) {
+    } on CameraGatewayException catch (e) {
       debugPrint('movement_capture: finish failed ${e.code}');
       _busyTransition = false;
       await _failImpl(CameraFailure.other);
@@ -1047,13 +1050,85 @@ class MovementCaptureController extends ChangeNotifier {
     }
   }
 
-  void _onCameraValue() {
-    final cam = _camera;
-    if (cam == null || !cam.value.hasError) return;
-    if (_state is CameraUnavailable || _sessionFinished) return;
-    debugPrint('movement_capture: camera error ${cam.value.errorDescription}');
-    _requestFail(CameraFailure.other, camera: cam); // e.g. webcam unplugged
+  void _onLost(CameraGateway cam, CameraLost lost) {
+    if (!identical(cam, _camera) || _disposed || _sessionFinished) return;
+    if (_state is CameraUnavailable) return;
+    debugPrint('movement_capture: camera lost: $lost');
+    if (_selected?.isUsbDirect ?? false) {
+      unawaited(_serial(() => _usbLostImpl(cam)));
+    } else {
+      _requestFail(CameraFailure.other, camera: cam); // e.g. webcam unplugged
+    }
   }
+
+  /// The direct-USB camera went away (unplugged, error, no frames): drop any
+  /// partial clip, then continue on the built-in camera with a notice.
+  Future<void> _usbLostImpl(CameraGateway cam) async {
+    if (_disposed || _sessionFinished || !identical(cam, _camera)) return;
+    _newPhase();
+    _cancelAllTimers();
+    _track = null;
+    await _stopAndDeleteActiveRecording();
+    await _releaseCamera();
+    _restarts = 0;
+    await _fallbackToBuiltInImpl();
+  }
+
+  /// Opens the front/back camera after the USB camera failed or was refused.
+  /// The USB camera stays in the chooser; nothing switches back by itself.
+  Future<void> _fallbackToBuiltInImpl() async {
+    if (_disposed) return;
+    _starting = true;
+    _usbFallback = true;
+    _setState(const Initializing());
+    try {
+      List<CameraChoice> choices;
+      try {
+        choices = await _enumerate();
+      } on CameraGatewayException {
+        choices = _choices;
+      }
+      final builtIn = choices.where((c) => !c.isUsbDirect && !c.isExternal);
+      final target = builtIn.isEmpty
+          ? null
+          : pickDefaultCamera(builtIn.toList(),
+              preferredId: config.preferredCameraId);
+      if (target == null) {
+        _setState(const CameraUnavailable(CameraFailure.noCamera));
+        return;
+      }
+      await _open(target);
+    } on CameraGatewayException catch (e) {
+      debugPrint('movement_capture: fallback failed ${e.code}');
+      await _releaseCamera();
+      _setState(CameraUnavailable(_failureFor(e)));
+    } finally {
+      _starting = false;
+      if (!_disposed) notifyListeners();
+    }
+  }
+
+  /// "Allow access to the USB camera" button. Granted: opens the camera.
+  /// Denied: falls back to the built-in camera with a notice.
+  Future<void> requestUsbPermission() => _serial(() async {
+        final choice = _selected;
+        if (_disposed ||
+            choice == null ||
+            !choice.isUsbDirect ||
+            _state is! CameraUnavailable) {
+          return;
+        }
+        final result = await _catalog.requestUsbPermission(choice);
+        if (_disposed) return;
+        switch (result) {
+          case UsbPermissionResult.granted:
+            await _switchCameraImpl(choice);
+          case UsbPermissionResult.denied:
+            await _fallbackToBuiltInImpl();
+          case UsbPermissionResult.cameraPermissionMissing:
+            _setState(const CameraUnavailable(CameraFailure.permissionDenied));
+        }
+      });
 
   /// No frame within 3 s of a phase starting: during recording, continue
   /// without live checks (if allowed); otherwise the camera can't be checked.
@@ -1114,13 +1189,15 @@ class MovementCaptureController extends ChangeNotifier {
 
   Future<void> _stopAndDeleteActiveRecording() async {
     final cam = _camera;
-    if (cam == null || !cam.value.isRecordingVideo) return;
+    if (cam == null || !cam.isRecording) return;
+    final partial = cam.activeRecordingPath;
     try {
-      final raw = await cam.stopVideoRecording();
-      await _storage.deletePath(raw.path);
+      final path = await cam.stopRecording();
+      await _storage.deletePath(path);
     } catch (_) {
       // purgeAll removes anything left behind
     }
+    if (partial != null) await _storage.deletePath(partial);
   }
 
   Future<void> _failImpl(CameraFailure reason) async {
@@ -1149,10 +1226,12 @@ class MovementCaptureController extends ChangeNotifier {
     _camera = null;
     final analyzer = _analyzer;
     _analyzer = null;
+    final lostSub = _lostSub;
+    _lostSub = null;
+    await lostSub?.cancel();
     if (cam != null) {
-      cam.removeListener(_onCameraValue);
       try {
-        if (cam.value.isStreamingImages) await cam.stopImageStream();
+        if (cam.isStreaming) await cam.stopImageStream();
       } catch (_) {}
       try {
         await cam.dispose();

@@ -14,6 +14,7 @@ import '../domain/result.dart';
 import '../domain/support_report.dart';
 import '../domain/uploader.dart';
 import '../domain/voice.dart';
+import 'camera_preview_host.dart';
 import 'controller.dart';
 import 'customization.dart';
 import 'debug_overlay.dart';
@@ -37,6 +38,7 @@ class MovementCaptureScreen extends StatefulWidget {
     this.style = const MovementCaptureStyle(),
     this.showDebugOverlay = false,
     this.onCameraChanged,
+    this.onCameraIdChanged,
     this.voice,
   });
 
@@ -48,6 +50,7 @@ class MovementCaptureScreen extends StatefulWidget {
   final MovementCaptureStyle style;
   final bool showDebugOverlay;
   final void Function(CameraDescription camera)? onCameraChanged;
+  final void Function(String cameraId)? onCameraIdChanged;
 
   /// Speaks prompts when [MovementCaptureConfig.speaks]. Null = silent.
   final MovementCaptureVoice? voice;
@@ -77,6 +80,7 @@ class _MovementCaptureScreenState extends State<MovementCaptureScreen>
       config: widget.config,
       uploader: widget.uploader,
       onCameraChanged: widget.onCameraChanged,
+      onCameraIdChanged: widget.onCameraIdChanged,
       lowMemoryDevice: widget.support.has(SupportIssueCode.lowMemoryDevice),
     );
     final voice = widget.voice;
@@ -381,13 +385,13 @@ class _CaptureBody extends StatelessWidget {
 
     final stack = Stack(
       children: [
-        if (cam != null && cam.value.isInitialized)
+        if (cam != null && cam.isInitialized)
           Center(
             // Display-only mirroring; the recorded file is never mirrored.
             child: Transform.flip(
               flipX: _mirror(controller.selectedCamera),
-              child: CameraPreview(
-                cam,
+              child: CameraPreviewHost(
+                gateway: cam,
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
@@ -547,6 +551,10 @@ class _CaptureBody extends StatelessWidget {
             if (reason == CameraFailure.permissionDenied)
               _PanelAction(s.openSettings,
                   () => unawaited(NativeBridge.openAppSettings()))
+            else if (reason == CameraFailure.usbPermissionNeeded)
+              _PanelAction(s.allowUsbCamera,
+                  () => unawaited(controller.requestUsbPermission()),
+                  primary: true)
             else if (controller.cameras.isNotEmpty)
               _PanelAction(s.useAnotherCamera,
                   () => _showCameraSheet(context, controller, ui),
@@ -692,7 +700,9 @@ class _TopBanner extends StatelessWidget {
                   style: textStyle),
               if (saved != null && !armed)
                 infoRow(ui.icons.saved, s.stepSaved(saved)),
-              if (controller.usingTabletFallback)
+              if (controller.usbFallbackActive)
+                infoRow(ui.icons.info, s.usbCameraLostNotice)
+              else if (controller.usingTabletFallback)
                 infoRow(ui.icons.info, s.noUsbCameraNotice),
             ],
           ),

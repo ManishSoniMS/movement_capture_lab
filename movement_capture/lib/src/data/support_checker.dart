@@ -8,6 +8,7 @@ import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
 import '../domain/native_support_info.dart';
 import '../domain/support_report.dart';
+import '../domain/usb_video_device.dart';
 import 'native_bridge.dart';
 
 /// Gathers facts with timeouts and hands them to [evaluateSupport].
@@ -15,7 +16,10 @@ import 'native_bridge.dart';
 abstract final class SupportChecker {
   static bool _mlKitConfirmed = false;
 
-  static Future<SupportReport> run(SupportRequirements requirements) async {
+  static Future<SupportReport> run(
+    SupportRequirements requirements, {
+    bool probeUsb = false,
+  }) async {
     final platform = kIsWeb
         ? 'web'
         : switch (defaultTargetPlatform) {
@@ -72,12 +76,46 @@ abstract final class SupportChecker {
       hands = false;
     }
 
+    var usbDevices = const <UsbVideoDevice>[];
+    var usbAvailable = false;
+    var probe = UsbProbeResult.notRun;
+    if (platform == 'android') {
+      try {
+        usbAvailable = await NativeBridge.usbDirectAvailable()
+            .timeout(const Duration(seconds: 3));
+        if (usbAvailable) {
+          usbDevices = await NativeBridge.usbList()
+              .timeout(const Duration(seconds: 3));
+        }
+      } catch (_) {
+        usbAvailable = false;
+      }
+      final pluginHasUsb = cameras?.any(
+              (c) => c.lensDirection == CameraLensDirection.external) ??
+          false;
+      if (probeUsb &&
+          usbAvailable &&
+          !pluginHasUsb &&
+          usbDevices.isNotEmpty &&
+          usbDevices.first.hasPermission) {
+        probe = switch (await NativeBridge.usbProbe(usbDevices.first.deviceName)
+            .timeout(const Duration(seconds: 10), onTimeout: () => 'failed')) {
+          'ok' => UsbProbeResult.ok,
+          'noFrames' => UsbProbeResult.noFrames,
+          _ => UsbProbeResult.failed,
+        };
+      }
+    }
+
     return evaluateSupport(
       platform: platform,
       native: native,
       cameras: cameras,
       mlKitAvailable: mlKit,
       handTrackingAvailable: hands,
+      usbVideoDevices: usbDevices,
+      usbDirectAvailable: usbAvailable,
+      usbProbe: probe,
       requirements: requirements,
       nativeError: nativeError,
       cameraError: cameraError,

@@ -31,6 +31,14 @@ class FileCaptureStorage implements CaptureStorage {
     return dir;
   }
 
+  /// A fresh `.mp4` path inside the package folder, for recorders that write
+  /// the file themselves (direct USB). [purgeAll] and dispose delete it.
+  Future<String> newRecordingPath() async {
+    final dir = await _sessionDir();
+    return '${dir.path}${Platform.pathSeparator}'
+        'usb_${DateTime.now().microsecondsSinceEpoch}.mp4';
+  }
+
   @override
   Future<File> adopt(String rawPath) async {
     final dir = await _sessionDir();

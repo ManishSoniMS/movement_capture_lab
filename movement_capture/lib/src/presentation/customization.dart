@@ -59,6 +59,10 @@ class MovementCaptureStrings {
     this.chooseCamera = 'Choose camera',
     this.usbCamerasHeading = 'USB cameras',
     this.tabletCamerasHeading = 'Tablet cameras',
+    this.cameraUsbPermission = 'Allow access to the USB camera.',
+    this.allowUsbCamera = 'Allow USB camera',
+    this.usbCameraLostNotice =
+        'The USB camera is not available. Using the tablet camera.',
     this.noUsbCameraNotice = 'No USB camera found. Using the tablet camera.',
     this.refreshCameras = 'Refresh list',
     this.scanTypeTitle = 'What would you like to scan?',
@@ -211,6 +215,9 @@ class MovementCaptureStrings {
   final String chooseCamera;
   final String usbCamerasHeading;
   final String tabletCamerasHeading;
+  final String cameraUsbPermission;
+  final String allowUsbCamera;
+  final String usbCameraLostNotice;
   final String noUsbCameraNotice;
   final String refreshCameras;
   final String scanTypeTitle;
@@ -383,6 +390,7 @@ class MovementCaptureStrings {
         CameraFailure.noCamera => cameraNone,
         CameraFailure.permissionDenied => cameraPermissionDenied,
         CameraFailure.streamUnsupported => cameraStreamUnsupported,
+        CameraFailure.usbPermissionNeeded => cameraUsbPermission,
         CameraFailure.other => cameraOther,
       };
 
@@ -392,6 +400,8 @@ class MovementCaptureStrings {
       CameraKind.front => (cameraFrontSingle, cameraFrontTemplate),
       CameraKind.back => (cameraBackSingle, cameraBackTemplate),
     };
+    final name = c.label;
+    if (c.isUsbDirect && name != null && name.isNotEmpty) return name;
     return c.countOfKind > 1
         ? template.replaceAll('{n}', '${c.ordinal}')
         : single;

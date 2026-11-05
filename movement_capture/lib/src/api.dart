@@ -16,10 +16,15 @@ abstract final class MovementCapture {
   /// Checks whether this device and app build can run the capture.
   /// Never throws. Call it before offering the feature; show the feature only
   /// when `report.canRun` is true.
+  ///
+  /// [probeUsb] opens a USB camera that Camera2 doesn't list and waits for a
+  /// frame (max 3 s), to detect hosts that can't power it (`usbNoFrames`). It
+  /// opens the camera, so leave it off for routine checks.
   static Future<SupportReport> checkSupport({
     SupportRequirements requirements = const SupportRequirements(),
+    bool probeUsb = false,
   }) =>
-      SupportChecker.run(requirements);
+      SupportChecker.run(requirements, probeUsb: probeUsb);
 
   /// Runs the support check, then opens the capture screen if allowed.
   /// Never returns null; see [MovementCaptureResult.status].
@@ -40,6 +45,7 @@ abstract final class MovementCapture {
     SupportRequirements requirements = const SupportRequirements(),
     bool showDebugOverlay = false,
     void Function(CameraDescription camera)? onCameraChanged,
+    void Function(String cameraId)? onCameraIdChanged,
     MovementCaptureVoice? voice,
   }) async {
     final report = await checkSupport(requirements: requirements);
@@ -59,6 +65,7 @@ abstract final class MovementCapture {
           style: style,
           showDebugOverlay: showDebugOverlay,
           onCameraChanged: onCameraChanged,
+          onCameraIdChanged: onCameraIdChanged,
           voice: voice,
         ),
       ),
