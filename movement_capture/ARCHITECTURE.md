@@ -44,7 +44,10 @@ lib/
       result.dart                   MovementCaptureResult, CaptureStepResult
       support_report.dart           SupportReport, SupportRequirements, evaluateSupport
       native_support_info.dart      facts read by the native plugin
-      camera_choice.dart            camera ordering and default choice
+      camera_choice.dart            camera ordering and default choice (plugin + direct USB)
+      camera_gateway.dart           CameraGateway interface, CameraFrameSize, CameraLost
+      camera_catalog.dart           CameraCatalog interface (listing, USB permission)
+      usb_video_device.dart         a video-class USB device as the native side lists it
       luma_stats.dart               brightness (NV21 and BGRA)
       quality_timer.dart            debouncing (grace / stability windows)
       pose_topology.dart            regions, skeleton lines, overlay frames (pose + hands, no face)
@@ -58,6 +61,9 @@ lib/
     data/                        the only code touching plugins and files
       mlkit_frame_analyzer.dart     FrameAnalyzer with ML Kit (pose, face) + brightness
       file_capture_storage.dart     CaptureStorage on <cache>/movement_capture/
+      plugin_camera_gateway.dart    CameraGateway on the `camera` plugin (CameraController)
+      usb_direct_camera_gateway.dart CameraGateway on the native UVC backend (texture + NV21 frames)
+      default_camera_catalog.dart   merges availableCameras() with direct-USB devices
       support_checker.dart          gathers facts with timeouts for evaluateSupport
       native_bridge.dart            channel to the native plugin
     presentation/                Flutter UI and the controller
@@ -73,7 +79,22 @@ android/ ios/                    native plugin: support info, settings, keep scr
 test/                            unit tests for domain, data and presentation logic
 ```
 
-Pure-Dart parts (unit-tested without a device): `luma_stats`, `quality_timer`, `pose_topology`, `landmark_track`, `camera_choice`, `support_report`, `serial_queue`, `step_uploads`, `speech_planner`, `config`, `review_samples`, `overlay_builder`, `out_of_frame`, `out_of_frame_timer`. Camera and ML Kit cannot run under `flutter test`, so the controller's camera flows and `VoiceGuide` are verified on a device.
+Camera gateway (controller → `CameraGateway` → backend → native):
+
+```
+MovementCaptureController ──► CameraCatalog ──► availableCameras() + NativeBridge.usbList()
+        │
+        └─► CameraGateway ─┬─► PluginCameraGateway ──► CameraController (Camera2 / AVFoundation)
+                           └─► UsbDirectCameraGateway ─► NativeBridge ─► UsbDirectCamera.kt
+                                                                          └─► org.uvccamera:lib (libuvc, libusb)
+                                 frames: EventChannel movement_capture/usb_frames (1 in flight, usbFrameDone ack)
+                                 events: EventChannel movement_capture/usb_events (attached, detached, error, noFrames)
+                                 preview: Texture(textureId), recording: MediaRecorder surface, no audio
+```
+
+The controller's camera flows are unit-tested with a fake gateway (`test/controller_gateway_test.dart`). The real USB path (libuvc, texture, MediaRecorder) is verified on a device only.
+
+Pure-Dart parts (unit-tested without a device): `luma_stats`, `quality_timer`, `pose_topology`, `landmark_track`, `camera_choice`, `support_report`, `serial_queue`, `step_uploads`, `speech_planner`, `config`, `review_samples`, `overlay_builder`, `out_of_frame`, `out_of_frame_timer`. Camera and ML Kit cannot run under `flutter test`; the controller is tested through fake gateways and analyzers, and the hardware paths and `VoiceGuide` are verified on a device.
 
 ## 3. Session state machine
 

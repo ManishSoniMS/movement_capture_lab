@@ -187,8 +187,7 @@ class MainActivity : FlutterActivity() {
             try {
                 val (code, lines) = runLogcat("-d", "-v", "time", "--pid=${android.os.Process.myPid()}")
                 val keep = Regex(
-                    "UVCCamera|USBMonitor|libuvc|libusb|UvcCamera|ANativeWindow|uvc_|" +
-                        "ImageReader|SurfaceProducer|BufferQueue",
+                    "UsbDirectCamera|USBMonitor|libuvc|libusb|libUVCCamera|UVCCamera",
                 )
                 val out = lines.filter { keep.containsMatchIn(it) }.takeLast(200)
                 runOnUiThread {

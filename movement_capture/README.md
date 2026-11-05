@@ -89,6 +89,27 @@ Both lines must be in **your app's** pubspec. Flutter ignores them inside a libr
 - `minSdk` must be **24** or higher.
 - Don't declare `RECORD_AUDIO` for this feature; audio is never recorded.
 - **Kiosks managed by an MDM** (for example Headwind MDM): pre-grant the CAMERA permission to the app.
+- **USB webcam on devices whose Camera2 doesn't list it** (for example Samsung Galaxy Tab S9 FE): the package opens it directly over UVC. Nothing to add for Camera2 cameras. For direct USB you need the `CAMERA` permission (already required). Optionally, add this to your **main activity** so Android grants USB access when the webcam is attached ("Always open"); the package can't add an intent filter to a host activity:
+
+  ```xml
+  <intent-filter>
+    <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+  </intent-filter>
+  <meta-data android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+             android:resource="@xml/device_filter" />
+  ```
+
+  `res/xml/device_filter.xml` (video class 0x0E = decimal 14):
+
+  ```xml
+  <resources>
+    <usb-device class="239" subclass="2" protocol="1" />
+    <usb-device class="14" />
+  </resources>
+  ```
+
+  Without it the operator sees a one-tap "Allow USB camera" button on the first scan.
+- **Power:** the webcam needs about 500 mA. Use **a powered hub, or a device that can power a 500 mA webcam**. On a Redmi Note 9 the camera opens but sends no frames and drops off USB after 10 to 20 s; the support check reports `usbNoFrames` (with `probeUsb: true`) and the scan falls back to the built-in camera.
 - **Android release builds:** R8 keep rules for ML Kit, MediaPipe and WorkManager ship with the package (`android/consumer-rules.pro`) and are applied automatically. Hosts need nothing extra. Don't add `-dontshrink`/`-dontobfuscate` or disable `consumerProguardFiles`.
 
 ### 3. iOS
@@ -226,6 +247,10 @@ Add retries (for example 3 attempts on network errors and 5xx) inside your uploa
 | `lowStorage`                  | user-fixable                               | Less than 200 MB free                                                                                                                      |
 | `checkFailed`                 | blocking                                   | Part of the check failed. On iOS this includes native info being unavailable, because the camera permission entry can't then be confirmed. |
 | `noUsbCamera`                 | warning (blocking with `requireUsbCamera`) | No USB webcam connected                                                                                                                    |
+| `usbDirectInUse`              | warning                                    | A USB video device Camera2 doesn't list is opened directly. Checks work as normal                                                          |
+| `usbPermissionNeeded`         | user-fixable                               | Android hasn't granted access to that USB camera yet (`open()` shows an "Allow" button)                                                    |
+| `usbDirectUnavailable`        | warning (blocking with `requireUsbCamera`) | A video device is attached but can't be opened directly (no native library for this CPU, or the probe failed)                              |
+| `usbNoFrames`                 | warning                                    | `checkSupport(probeUsb: true)` opened the camera and got no frame in 3 s: the device may not power the webcam                              |
 | `noFrontCamera`               | warning                                    | The fallback will use the back camera                                                                                                      |
 | `lowMemoryDevice`             | warning                                    | Live checks may run slowly                                                                                                                 |
 | `runningOnSimulator`          | warning                                    |                                                                                                                                            |

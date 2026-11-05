@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'data/file_capture_storage.dart';
 import 'data/native_bridge.dart';
 import 'data/support_checker.dart';
+import 'domain/camera_catalog.dart' show UsbPermissionResult;
 import 'domain/config.dart';
 import 'domain/result.dart';
 import 'domain/support_report.dart';
 import 'domain/uploader.dart';
+import 'domain/usb_video_device.dart';
 import 'domain/voice.dart';
 import 'presentation/customization.dart';
 import 'presentation/screen.dart';
@@ -82,4 +84,22 @@ abstract final class MovementCapture {
 
   /// For diagnostics screens.
   static Future<List<CameraDescription>> listCameras() => availableCameras();
+
+  /// USB devices with a video interface that the package can open directly
+  /// (Android only; empty elsewhere or when the native library is missing).
+  /// For diagnostics screens. Never throws.
+  static Future<List<UsbVideoDevice>> listUsbVideoDevices() =>
+      NativeBridge.usbList();
+
+  /// Asks Android for access to the USB camera [deviceName]. Needs the CAMERA
+  /// permission first; returns [UsbPermissionResult.cameraPermissionMissing]
+  /// otherwise. Never throws.
+  static Future<UsbPermissionResult> requestUsbPermission(
+      String deviceName) async {
+    return switch (await NativeBridge.usbRequestPermission(deviceName)) {
+      'granted' => UsbPermissionResult.granted,
+      'cameraPermissionMissing' => UsbPermissionResult.cameraPermissionMissing,
+      _ => UsbPermissionResult.denied,
+    };
+  }
 }

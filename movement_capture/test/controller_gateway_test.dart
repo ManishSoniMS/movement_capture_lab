@@ -8,15 +8,12 @@ import 'package:movement_capture/movement_capture.dart';
 import 'package:movement_capture/src/data/usb_direct_camera_gateway.dart'
     show nv21CameraImage;
 import 'package:movement_capture/src/domain/camera_catalog.dart';
-import 'package:movement_capture/src/domain/camera_choice.dart';
 import 'package:movement_capture/src/domain/camera_gateway.dart';
 import 'package:movement_capture/src/domain/capture_state.dart';
 import 'package:movement_capture/src/domain/capture_storage.dart';
-import 'package:movement_capture/src/domain/capture_step.dart';
 import 'package:movement_capture/src/domain/frame_analyzer.dart';
 import 'package:movement_capture/src/domain/frame_metrics.dart';
 import 'package:movement_capture/src/domain/luma_stats.dart';
-import 'package:movement_capture/src/domain/usb_video_device.dart';
 import 'package:movement_capture/src/presentation/controller.dart';
 
 class FakeGateway implements CameraGateway {

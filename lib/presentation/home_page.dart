@@ -83,7 +83,7 @@ class _HomePageState extends State<HomePage> {
       config: _s.toConfig(),
       uploader: _uploader(),
       showDebugOverlay: _s.debugOverlay,
-      onCameraChanged: (camera) => _s.lastCameraId = camera.name,
+      onCameraIdChanged: (id) => _s.lastCameraId = id,
       voice: _s.voiceEnabled ? TtsVoice(language: _s.voiceLanguage) : null,
     );
     if (!mounted) return;

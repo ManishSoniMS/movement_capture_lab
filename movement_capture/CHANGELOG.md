@@ -4,6 +4,16 @@ All notable changes to `movement_capture`. The format follows [Keep a Changelog]
 
 ## [Unreleased]
 
+- **Direct USB camera (Android).** When Camera2 doesn't list the USB webcam (Galaxy Tab S9 FE), the camera screen opens it directly over UVC (`org.uvccamera:lib` 0.0.13: libusb, libuvc, libjpeg-turbo). Full feature set: live checks, tracking marks, countdown, recording (H.264, about 6 Mbps at 720p, no audio), review, retake, deletion, upload. If the plugin lists an external camera, direct USB is ignored.
+- **BREAKING:** `CameraChoice.description` is now nullable (null for direct USB). New fields `backend`, `usbDeviceName`, `vendorId`, `productId`, `label`; `id` is `usb:<vid>:<pid>` for direct USB. `buildCameraChoices(plugin, [usbDirect])`.
+- **BREAKING:** new support codes `usbDirectInUse`, `usbPermissionNeeded`, `usbDirectUnavailable`, `usbNoFrames`; `noUsbCamera` fires only when neither Camera2 nor direct USB finds a video device. `SupportReport` gets `usbVideoDevices`, `usbDirectAvailable`; `checkSupport(probeUsb: true)`. A `switch` over `SupportIssueCode` or `CameraFailure` (new `usbPermissionNeeded`) must handle the new values.
+- **BREAKING (config):** new `MovementCaptureConfig.usbPreviewSurface` (`producer` default, `texture` fallback).
+- New `onCameraIdChanged(String id)` on `MovementCapture.open`: fires for every backend. `onCameraChanged` still fires for plugin cameras only.
+- New strings `cameraUsbPermission`, `allowUsbCamera`, `usbCameraLostNotice`. `cameraLabel` shows the USB product name for direct USB.
+- New `CameraGateway` / `CameraCatalog` seam: the controller no longer touches `CameraController`; controller flows are unit-tested with a fake gateway. New dependency `camera_platform_interface` (wraps USB NV21 frames as `CameraImage`).
+- Lost USB camera (unplugged, error, no frames): the partial clip is deleted and the scan continues on the built-in camera with a notice; the webcam is offered again in the chooser after a replug.
+- Native libraries add about 0.5 MB per ABI (arm64-v8a, armeabi-v7a only). They are LGPL-2.1 (libusb); see `THIRD_PARTY_NOTICES.md`.
+
 - `showSkeletonInReview` (default false): the review playback no longer shows tracking marks. Live marks are unchanged. The recorded file never contained them. With it off, no review samples are collected.
 - **Camera pick:** a connected USB camera now wins over a saved `preferredCameraId` that points at a tablet camera. `pickDefaultCamera` gets `sessionChoiceId` (a camera chosen in this session or per step is kept); `preferredId` is honoured when it is a USB camera or when no USB camera is connected. Before, a saved tablet camera hid the USB camera on every later session.
 - `ScanSelection` + `ScanTypePicker`: one scan type at a time, four large tiles (border, check mark and colour), Start off until a tile is chosen, nothing pre-selected. New strings `scanTypeTitle`, `scanTypeStart`, `scanTypeSelected`.

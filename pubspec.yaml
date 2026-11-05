@@ -17,9 +17,7 @@ dependencies:
   path_provider: ^2.1.6
   flutter_tts: ^4.2.5
   shared_preferences: ^2.5.6
-  # LAB ONLY, TEMPORARY: Part A go/no-go test (kiosk-08). Never add to movement_capture/.
-  uvccamera: 0.0.13
-  # LAB ONLY, TEMPORARY (kiosk-08b): plays the quick clip. Same constraint as the package.
+  # LAB ONLY: plays the quick clip in the USB test page.
   video_player: ^2.9.2
 
 dev_dependencies:
@@ -30,9 +28,6 @@ dev_dependencies:
 dependency_overrides:
   camera_avfoundation:
     path: third_party/camera_avfoundation
-  # LAB ONLY, TEMPORARY: uvccamera 0.0.13 + 2 patches (third_party/uvccamera/PATCHES.md).
-  uvccamera:
-    path: third_party/uvccamera
 
 flutter:
   uses-material-design: true

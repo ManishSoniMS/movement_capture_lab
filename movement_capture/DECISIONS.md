@@ -171,3 +171,24 @@ All thresholds are in config.
 **Options:** (a) live only, review opt-in (chosen); (b) burn the marks into the video. Rejected: it would change the clip the backend analyses, and it costs an encode pass.
 **Why:** The backend runs its own analysis on the raw video; the review showing lines made it look as if they were in the clip.
 **Consequences:** `landmarks.json` and the upload payload are unchanged. Tests guard that `lib/` has no frame-to-image or muxer/codec code that could composite marks.
+
+### D-036 · Direct USB camera through `org.uvccamera:lib` 0.0.13
+**Decision:** On Android, when the `camera` plugin lists no external camera, the package opens video-class USB devices itself with `org.uvccamera:lib` 0.0.13 (libusb, libuvc, libjpeg-turbo), through `UsbDirectCamera.kt` in the package's own plugin and the channel `movement_capture/native`.
+**Options:** (a) depend on the `uvccamera` Flutter plugin: every host would need an override and the plugin has bugs (unfiltered device list, largest-size preset, ignored init errors); (b) the native library only, our own wrapper (chosen); (c) a Camera2 fork: Samsung doesn't expose the webcam at all.
+**Why:** The Part A gate passed on the Tab S9 FE (1280x720 MJPEG, clip plays) while Camera2 lists only the built-in cameras.
+**Consequences:** About 0.5 MB native code per ABI; `armeabi-v7a`/`arm64-v8a` only (other ABIs report `usbDirectUnavailable`); libusb is LGPL-2.1 (`THIRD_PARTY_NOTICES.md`, flagged for legal); the USB stack must be device-tested (checks B-1..B-10).
+
+### D-037 · `CameraGateway` / `CameraCatalog` seam
+**Decision:** The controller talks to `CameraGateway` (one opened camera) and `CameraCatalog` (listing, USB permission) only. `PluginCameraGateway` wraps `CameraController` unchanged (same preset, no audio, NV21/BGRA); `UsbDirectCameraGateway` wraps the native side and wraps NV21 frames as `CameraImage` so the analyzers are untouched. The serial queue, epochs and `_transitionQueued` stay in the controller.
+**Why:** Closes the "controller untested" gap; a second backend without branching inside the controller. `camera_platform_interface` became a direct dependency to build `CameraImageData`.
+**Consequences:** `CameraChoice.description` is nullable (BREAKING). Direct-USB ids are `usb:<vid>:<pid>`, stable across replugs.
+
+### D-038 · Preview texture: `SurfaceProducer` first, `SurfaceTexture` as the switch
+**Decision:** `usbPreviewSurface` defaults to `producer`; `texture` is the config fallback. Part A proved frames reach the recorder on the Tab, not that the preview texture draws (check B-0).
+**Deviation:** the prompt asked for an automatic switch when the producer shows no new image for 2 s. Flutter's `SurfaceProducer` exposes no draw or frame counter, so the native side cannot observe that. Frames are counted (for `noFrames`), but the producer-to-texture switch is manual until B-0 says it is needed. In `texture` mode a frame listener could be added the same way.
+**Consequences:** If B-0 shows a purple preview, set `usbPreviewSurface: UsbPreviewSurface.texture`.
+
+### D-039 · 16 KB page size: UVC native libraries are 4 KB aligned
+**Finding (release APK, 2026-11-05):** `llvm-readelf -lW` on `libUVCCamera.so`, `libuvc.so`, `libusb100.so`, `libjpeg-turbo1500.so` (arm64-v8a): every LOAD segment `Align 0x1000`; the 16 KB requirement needs `0x4000`. `zipalign -c -P 16 -v 4` on the APK: **Verification successful** (zip alignment only).
+**Decision:** Not blocking: the kiosk ships through MDM, not Google Play. **Play Store blocker for B2C** (Android 15+ with 16 KB pages, Play requirement from 1 Nov 2025 for new apps and updates targeting 15+).
+**Fix:** rebuild `org.uvccamera:lib` with NDK r28+ (or `-Wl,-z,max-page-size=16384`) and publish or vendor it.

@@ -69,10 +69,9 @@ class _Report {
           'Refresh.';
     }
     if (usb.isNotEmpty) {
-      return 'The tablet sees a USB video device, but Android does not offer it '
-          'to apps as a camera. Unplug and replug it, then Refresh. If it stays '
-          'like this, apps cannot use it through the camera system and the USB '
-          'camera library path (Path B) is needed.';
+      return 'The tablet sees a USB video device that Android does not offer '
+          'as a camera. The package uses it directly (USB direct). Open a '
+          'scan to try it.';
     }
     return 'No USB camera found. Check the cable, the USB-C adapter or hub, '
         'and that the webcam has power.';

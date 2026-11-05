@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movement_capture/movement_capture.dart';
 import 'package:movement_capture/src/domain/capture_state.dart';
-import 'package:movement_capture/src/domain/usb_video_device.dart';
 
 CameraDescription _cam(String id, CameraLensDirection d) =>
     CameraDescription(name: id, lensDirection: d, sensorOrientation: 0);

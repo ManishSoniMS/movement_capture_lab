@@ -6,6 +6,7 @@ export 'package:camera/camera.dart'
 
 export 'src/api.dart';
 export 'src/domain/body_sides.dart' show BodySide, SideChoice, SideStatus;
+export 'src/domain/camera_catalog.dart' show UsbPermissionResult;
 export 'src/domain/camera_choice.dart';
 export 'src/domain/usb_video_device.dart';
 export 'src/domain/capture_step.dart';

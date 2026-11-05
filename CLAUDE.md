@@ -23,7 +23,7 @@ cd movement_capture && flutter test test/quality_timer_test.dart   # single test
 cd movement_capture && flutter test --plain-name "<name>"    # single test by name
 ```
 
-Root `test/` is empty; all tests live in `movement_capture/test/`. Baseline: package tests and package analyze are clean. Root `flutter analyze` has 3 known infos (`unintended_html_in_doc_comment` in `uploaders.dart`, deprecated `Radio` `groupValue`/`onChanged` in `home_page.dart`); don't add new ones.
+Root `test/` is empty; all tests live in `movement_capture/test/`. Baseline: 290 package tests pass and package analyze is clean. Root `flutter analyze` has 3 known infos (`unintended_html_in_doc_comment` in `uploaders.dart`, deprecated `Radio` `groupValue`/`onChanged` in `home_page.dart`); don't add new ones.
 
 ## Workflow (TDD, zero regressions)
 
@@ -45,7 +45,7 @@ Package:
 - `presentation/`: `MovementCaptureController`, `MovementCaptureScreen`, `debug_overlay.dart`, `customization.dart` (`MovementCaptureStrings/Icons/Style`).
 - `api.dart`: public facade `MovementCapture.open / purgeAll / listCameras`. `lib/movement_capture.dart` is the only file hosts import.
 
-The controller takes `storage:`, `analyzerFactory:` (called with `rotationDegrees:` callback) and `onCameraChanged:` constructor params (defaults: `FileCaptureStorage`, `MlKitFrameAnalyzer`), so tests inject fakes. Known gap: it still creates `CameraController` directly (no camera gateway yet), so controller flows can't be unit-tested without a device.
+The controller takes `storage:`, `analyzerFactory:` (called with `rotationDegrees:` callback) and `onCameraChanged:` constructor params (defaults: `FileCaptureStorage`, `MlKitFrameAnalyzer`), so tests inject fakes. It also takes `catalog:` (`CameraCatalog`) and `gatewayFactory:` (`CameraGateway`), so controller flows are tested with fakes (`test/controller_gateway_test.dart`). `PluginCameraGateway` wraps `CameraController`; `UsbDirectCameraGateway` drives the native UVC backend (`UsbDirectCamera.kt`) when Camera2 doesn't list the webcam.
 
 Lab app: `domain/lab_settings.dart` (`UploaderMode`, settings), `data/uploaders.dart`, `presentation/` (`home_page.dart`, `camera_info_page.dart`). Keep it thin; no business logic in the lab.
 

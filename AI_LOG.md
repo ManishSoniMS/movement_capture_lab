@@ -309,3 +309,31 @@
 **Debug/profile (read from code, device not reachable).** No `kDebugMode`/`kProfileMode` branches, no `StrictMode`, no `debuggable` logic in lab or package; the only `assert` is the config rotation check in `movement_capture/lib/src/domain/config.dart:77`. `main()` is just `runApp`. The `uvccamera` plugin registers a USB monitor receiver at attach, in all modes. So no debug-only code kills the process before the first frame. Likely cause: `--start-paused`. In Flutter 3.47.6 the tool sends the intent extra `start-paused=true` (`flutter_tools/lib/src/android/android_device.dart:683`), and the app waits for the VM service to resume it; a failed VM-service connection over Wi-Fi adb leaves a blank screen. Not proven for this device. Steps: `docs/RUNNING_ON_A_PHONE_WITH_THE_WEBCAM.md`.
 **uvccamera patches** (lab-only vendored copy `third_party/uvccamera`, `dependency_overrides` in the lab pubspec; `PATCHES.md`): (1) closest-area size choice with `long` delta; (2) `setPreviewMode` reads `previewMode`. Pros: H2 can compare real resolutions. Cons: a fork to remove when Part B replaces the plugin. Test page shows "Closest-area fix applied" and the old round-2 note is gone.
 **Verification:** lab analyze 3 known infos; lab tests 9 pass; package analyze clean, 264 tests pass; release APK builds with Impeller on and off. Device checks C-1..C-4: not run (no device).
+
+## Revision 16 (= 15 Part B): USB webcam on the camera screen through a direct-USB backend
+
+**Branch:** `feat/usb-direct` from `wip/r13-r15a` (`9ce4186`). **Baseline:** package 264 tests pass, package analyze clean, root analyze 3 known infos.
+
+**Files touched.**
+- Domain (new): `camera_gateway.dart` (`CameraGateway`, `CameraFrameSize`, `CameraLost`, `CameraGatewayException`), `camera_catalog.dart`, `usb_video_device.dart`. Changed: `camera_choice.dart` (backend, nullable `description`, `usb:<vid>:<pid>` ids, `buildCameraChoices(plugin, [usbDirect])`), `capture_state.dart` (`CameraFailure.usbPermissionNeeded`), `config.dart` (`usbPreviewSurface`), `support_report.dart` (4 codes, `UsbProbeResult`, usb line in `describe()`/`toString()`).
+- Data (new): `plugin_camera_gateway.dart` (the moved `CameraController` code), `usb_direct_camera_gateway.dart`, `default_camera_catalog.dart`. Changed: `native_bridge.dart` (usb methods), `support_checker.dart` (`probeUsb`), `file_capture_storage.dart` (`newRecordingPath`).
+- Presentation: `controller.dart` (gateway/catalog injection, `_onLost`, `_usbLostImpl`, `_fallbackToBuiltInImpl`, `requestUsbPermission`, `onCameraIdChanged`), `camera_preview_host.dart` (new), `screen.dart`, `customization.dart`.
+- Native: `UsbDirectCamera.kt` (new), `MovementCapturePlugin.kt`, `build.gradle.kts` (`org.uvccamera:lib:0.0.13`), `AndroidManifest.xml` (usb.host not required), `consumer-rules.pro`.
+- Lab: `usb_direct_test_page.dart` rewritten on the package API (`package:movement_capture/usb_direct.dart`), `third_party/uvccamera` and its overrides deleted, `MainActivity.kt` log filter, verdict text, `home_page.dart` uses `onCameraIdChanged`.
+- Tests: `camera_choice_test.dart` (+6), `support_usb_direct_test.dart` (10), `controller_gateway_test.dart` (8, fake gateway/catalog/analyzer), keep rules test (+2).
+- Docs: README, CHANGELOG, ARCHITECTURE, DECISIONS (D-036..D-039), `THIRD_PARTY_NOTICES.md`.
+
+**Why this approach.** A gateway seam keeps the serial queue, epochs and guard flags in the controller and puts the second backend behind one interface; direct USB is native code in the package's own plugin, so hosts add nothing. Direct-USB cameras replace nothing: they appear only when the plugin lists no external camera. Loss of the USB camera falls back to the built-in camera (plugin failures keep today's `CameraUnavailable`).
+
+**Pros:** controller flows now unit-tested; no host overrides; same analyzers for both backends. **Cons:** native USB stack is device-tested only; LGPL libusb; 4 KB-aligned libraries (D-039); one extra direct dependency.
+
+**Deviations.**
+- D5 auto-switch producer→texture: not implemented (no draw signal from `SurfaceProducer`), see D-038. Config switch works.
+- `CameraGateway` has extra members beyond the prompt's sketch: `isInitialized`, `isStreaming`, `isRecording`, `previewOrientationDegrees`, `activeRecordingPath` (needed by the controller and by partial-file deletion).
+- `onCameraChanged` can't carry a direct-USB camera; added `onCameraIdChanged`.
+- Permission denied/lost fallback applies to direct USB only; a lost plugin camera still ends in `CameraUnavailable` as before.
+- The red step for the controller tests was not a separate failing run: the tests need the refactor to compile. The domain and support tests were written first and failed to compile before the types existed.
+
+**Verification.** Package: `flutter test` 290 pass (264 + 26), `flutter analyze` clean. Root: `flutter analyze` 3 known infos (unchanged). Lint `lintRelease`: `NewApi` 0 on app and package. `flutter build apk --release` builds (147.9 MB). 16 KB: ELF LOAD align `0x1000` on all four UVC libs (fails), `zipalign -c -P 16 -v 4` passes (D-039). Kotlin compiles (`compileDebugKotlin`).
+
+**Device checks B-0..B-10: not run (need a device).**
