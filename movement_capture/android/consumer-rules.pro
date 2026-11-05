@@ -37,3 +37,8 @@
 
 # --- This plugin (registered by name from GeneratedPluginRegistrant) ---
 -keep class com.medpredict.movement_capture.** { *; }
+
+# --- Direct USB camera (org.uvccamera:lib) ---
+# JNI looks these up by name
+-keep class com.serenegiant.** { *; }
+-keep class org.uvccamera.** { *; }

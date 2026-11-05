@@ -34,6 +34,8 @@ void main() {
       '-keep class androidx.work.impl.WorkDatabase_Impl { *; }',
       '-keep class * extends androidx.room.RoomDatabase { *; }',
       '-keep class com.medpredict.movement_capture.** { *; }',
+      '-keep class com.serenegiant.** { *; }',
+      '-keep class org.uvccamera.** { *; }',
     ];
     for (final line in required) {
       test(line, () {

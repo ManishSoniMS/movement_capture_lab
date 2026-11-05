@@ -23,6 +23,7 @@ class MovementCapturePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Ac
     private lateinit var channel: MethodChannel
     private lateinit var context: Context
     private lateinit var hands: HandTracker
+    private var usb: UsbDirectCamera? = null
     private var activity: Activity? = null
 
     /** Whether the window already had KEEP_SCREEN_ON before we set it. */
@@ -31,6 +32,11 @@ class MovementCapturePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Ac
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         context = binding.applicationContext
         hands = HandTracker(context)
+        usb = try {
+            UsbDirectCamera(context, binding.textureRegistry, binding.binaryMessenger)
+        } catch (t: Throwable) {
+            null // direct USB stays unavailable; the camera plugin path is unaffected
+        }
         channel = MethodChannel(binding.binaryMessenger, "movement_capture/native")
         channel.setMethodCallHandler(this)
     }
@@ -38,6 +44,8 @@ class MovementCapturePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Ac
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel.setMethodCallHandler(null)
         hands.close()
+        usb?.release()
+        usb = null
     }
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
@@ -54,6 +62,7 @@ class MovementCapturePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Ac
 
     override fun onDetachedFromActivity() {
         activity = null
+        usb?.onActivityGone()
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -64,6 +73,18 @@ class MovementCapturePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Ac
                 "setKeepScreenOn" -> {
                     setKeepScreenOn(call.argument<Boolean>("on") == true)
                     result.success(null)
+                }
+                "usbDirectAvailable", "usbList", "usbRequestPermission", "usbOpen",
+                "usbStartStream", "usbStopStream", "usbFrameDone", "usbStartRecording",
+                "usbStopRecording", "usbClose", "usbProbe" -> {
+                    val u = usb
+                    if (u == null) {
+                        if (call.method == "usbList") result.success(emptyList<Any>())
+                        else if (call.method == "usbDirectAvailable") result.success(false)
+                        else result.error("usb", "direct USB unavailable", null)
+                    } else {
+                        u.handle(call.method, call.arguments as? Map<*, *>, result)
+                    }
                 }
                 "handTrackingAvailable" -> hands.available(result)
                 "detectHands" -> {

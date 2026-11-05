@@ -74,6 +74,8 @@ kotlin {
 
 dependencies {
     implementation("com.google.mediapipe:tasks-vision:0.10.26")
+    // Direct USB (UVC) camera: libusb + libuvc + libjpeg-turbo. Apache-2.0 wrapper.
+    implementation("org.uvccamera:lib:0.0.13")
     testImplementation("org.jetbrains.kotlin:kotlin-test")
     testImplementation("org.mockito:mockito-core:5.0.0")
 }
