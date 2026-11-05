@@ -1,17 +1,42 @@
 import 'package:camera/camera.dart';
 
+import 'usb_video_device.dart';
+
 enum CameraKind { external, front, back }
+
+/// What opens the camera.
+enum CameraBackend { plugin, usbDirect }
 
 /// One selectable camera, with what's needed to label it.
 class CameraChoice {
   const CameraChoice({
-    required this.description,
+    this.description,
     required this.kind,
     required this.ordinal,
     required this.countOfKind,
-  });
+    this.backend = CameraBackend.plugin,
+    this.usbDeviceName,
+    this.vendorId,
+    this.productId,
+    this.label,
+  }) : assert(
+          backend == CameraBackend.usbDirect
+              ? vendorId != null && productId != null
+              : description != null,
+          'plugin choices need a description; usbDirect needs vid/pid',
+        );
 
-  final CameraDescription description;
+  /// Null for [CameraBackend.usbDirect].
+  final CameraDescription? description;
+  final CameraBackend backend;
+
+  /// `/dev/bus/usb/…` path (direct USB only; changes on replug).
+  final String? usbDeviceName;
+  final int? vendorId;
+  final int? productId;
+
+  /// USB product name, e.g. "Arducam 1080P Low Light" (direct USB only).
+  final String? label;
   final CameraKind kind;
 
   /// 1-based position among cameras of the same kind.
@@ -22,7 +47,15 @@ class CameraChoice {
 
   /// Android camera ID. Stable for built-in cameras; for USB cameras it is
   /// stable for the same port/device on most devices.
-  String get id => description.name;
+  ///
+  /// Direct USB: `usb:<vid hex>:<pid hex>`, stable across replugs.
+  String get id => backend == CameraBackend.usbDirect
+      ? 'usb:${_hex4(vendorId!)}:${_hex4(productId!)}'
+      : description!.name;
+
+  bool get isUsbDirect => backend == CameraBackend.usbDirect;
+
+  static String _hex4(int v) => v.toRadixString(16).padLeft(4, '0');
 
   bool get isExternal => kind == CameraKind.external;
 }
@@ -35,8 +68,31 @@ CameraKind _kindOf(CameraLensDirection d) => switch (d) {
 
 /// Orders cameras as: USB cameras, then front, then back. Plugin order is kept
 /// within each group.
-List<CameraChoice> buildCameraChoices(List<CameraDescription> cameras) {
+///
+/// [usbDirect] webcams are used only when the plugin lists no external camera,
+/// so one webcam is never offered twice. They go first, as external cameras.
+List<CameraChoice> buildCameraChoices(
+  List<CameraDescription> cameras, [
+  List<UsbVideoDevice> usbDirect = const [],
+]) {
   final result = <CameraChoice>[];
+  final pluginHasExternal =
+      cameras.any((c) => c.lensDirection == CameraLensDirection.external);
+  if (!pluginHasExternal) {
+    for (var i = 0; i < usbDirect.length; i++) {
+      final d = usbDirect[i];
+      result.add(CameraChoice(
+        kind: CameraKind.external,
+        ordinal: i + 1,
+        countOfKind: usbDirect.length,
+        backend: CameraBackend.usbDirect,
+        usbDeviceName: d.deviceName,
+        vendorId: d.vendorId,
+        productId: d.productId,
+        label: d.productName,
+      ));
+    }
+  }
   for (final kind in CameraKind.values) {
     final ofKind =
         cameras.where((c) => _kindOf(c.lensDirection) == kind).toList();

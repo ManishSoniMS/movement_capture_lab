@@ -7,6 +7,9 @@ import 'capture_step.dart';
 enum CaptureOrientation { auto, landscape, portrait }
 
 /// B2B: a helper is present. B2C: the user is on their own.
+/// How the direct-USB preview texture is created on Android.
+enum UsbPreviewSurface { producer, texture }
+
 enum CaptureMode { assisted, selfGuided }
 
 class MovementCaptureConfig {
@@ -30,6 +33,7 @@ class MovementCaptureConfig {
     this.violationGrace = const Duration(milliseconds: 400),
     this.maxRestarts = 3,
     this.resolution = ResolutionPreset.high,
+    this.usbPreviewSurface = UsbPreviewSurface.producer,
     this.preferredCameraId,
     this.cameraRotationDegrees,
     this.mirrorExternalPreview,
@@ -117,6 +121,13 @@ class MovementCaptureConfig {
   final Duration violationGrace;
   final int maxRestarts;
   final ResolutionPreset resolution;
+
+  /// How the direct-USB preview is drawn. [UsbPreviewSurface.producer] is
+  /// the default; [UsbPreviewSurface.texture] is the fallback for devices
+  /// where the producer never draws (the native side also switches to it
+  /// once, automatically).
+  final UsbPreviewSurface usbPreviewSurface;
+
 
   /// Camera ID the operator chose last time (from `onCameraChanged`). Used if
   /// still connected; otherwise the default rule applies.

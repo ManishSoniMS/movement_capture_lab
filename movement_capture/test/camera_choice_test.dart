@@ -1,11 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movement_capture/movement_capture.dart';
 import 'package:movement_capture/src/domain/capture_state.dart';
+import 'package:movement_capture/src/domain/usb_video_device.dart';
 
 CameraDescription _cam(String id, CameraLensDirection d) =>
     CameraDescription(name: id, lensDirection: d, sensorOrientation: 0);
 
 void main() {
+  usbDirectTests();
   final back = _cam('0', CameraLensDirection.back);
   final front = _cam('1', CameraLensDirection.front);
   final usbA = _cam('100', CameraLensDirection.external);
@@ -164,5 +166,92 @@ void main() {
   test('CameraFailure.noCamera maps to the no-camera message', () {
     const strings = MovementCaptureStrings();
     expect(strings.cameraFailure(CameraFailure.noCamera), strings.cameraNone);
+  });
+}
+
+// ---- direct USB (R16)
+void usbDirectTests() {
+  CameraDescription cam(String id, CameraLensDirection d) =>
+      CameraDescription(name: id, lensDirection: d, sensorOrientation: 0);
+  const arducam = UsbVideoDevice(
+    deviceName: '/dev/bus/usb/002/005',
+    vendorId: 0x0c45,
+    productId: 0x0261,
+    productName: 'Arducam 1080P Low Light',
+  );
+  final back = cam('0', CameraLensDirection.back);
+  final front = cam('1', CameraLensDirection.front);
+  final usbPlugin = cam('100', CameraLensDirection.external);
+
+  group('direct USB', () {
+    test('listed first as external when the plugin has no external camera',
+        () {
+      final c = buildCameraChoices([back, front], [arducam]);
+      expect(c.map((e) => e.id), ['usb:0c45:0261', '1', '0']);
+      expect(c.first.isExternal, isTrue);
+      expect(c.first.isUsbDirect, isTrue);
+      expect(c.first.description, isNull);
+      expect(c.first.label, 'Arducam 1080P Low Light');
+      expect(c.first.usbDeviceName, '/dev/bus/usb/002/005');
+    });
+
+    test('ignored when the plugin already lists an external camera', () {
+      final c = buildCameraChoices([back, front, usbPlugin], [arducam]);
+      expect(c.map((e) => e.id), ['100', '1', '0']);
+      expect(c.any((e) => e.isUsbDirect), isFalse);
+    });
+
+    test('id is zero-padded hex and stable across replugs', () {
+      const moved = UsbVideoDevice(
+        deviceName: '/dev/bus/usb/001/009',
+        vendorId: 0x1,
+        productId: 0x2,
+        productName: 'x',
+      );
+      expect(buildCameraChoices([], [moved]).first.id, 'usb:0001:0002');
+      final a = buildCameraChoices([back], [arducam]).first.id;
+      const replug = UsbVideoDevice(
+        deviceName: '/dev/bus/usb/002/017',
+        vendorId: 0x0c45,
+        productId: 0x0261,
+        productName: 'Arducam 1080P Low Light',
+      );
+      expect(buildCameraChoices([back], [replug]).first.id, a);
+    });
+
+    test('pickDefaultCamera: saved usb id present or absent', () {
+      final withUsb = buildCameraChoices([back, front], [arducam]);
+      expect(pickDefaultCamera(withUsb, preferredId: 'usb:0c45:0261')?.id,
+          'usb:0c45:0261');
+      expect(pickDefaultCamera(withUsb, preferredId: '1')?.id, 'usb:0c45:0261');
+      final noUsb = buildCameraChoices([back, front]);
+      expect(pickDefaultCamera(noUsb, preferredId: 'usb:0c45:0261')?.id, '1');
+    });
+
+    test('numbering counts direct USB cameras', () {
+      const second = UsbVideoDevice(
+        deviceName: '/dev/bus/usb/002/006',
+        vendorId: 0x1,
+        productId: 0x1,
+        productName: 'B',
+      );
+      final c = buildCameraChoices([], [arducam, second]);
+      expect(c.map((e) => e.ordinal), [1, 2]);
+      expect(c.first.countOfKind, 2);
+    });
+
+    test('UsbVideoDevice.fromMap parses the native map', () {
+      final d = UsbVideoDevice.fromMap({
+        'deviceName': '/dev/bus/usb/002/005',
+        'vendorId': 3141,
+        'productId': 609,
+        'productName': 'Arducam',
+        'hasPermission': true,
+        'maxPowerMa': 500,
+      });
+      expect(d.vendorId, 0x0c45);
+      expect(d.hasPermission, isTrue);
+      expect(d.maxPowerMa, 500);
+    });
   });
 }

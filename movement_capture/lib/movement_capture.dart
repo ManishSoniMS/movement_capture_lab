@@ -7,6 +7,7 @@ export 'package:camera/camera.dart'
 export 'src/api.dart';
 export 'src/domain/body_sides.dart' show BodySide, SideChoice, SideStatus;
 export 'src/domain/camera_choice.dart';
+export 'src/domain/usb_video_device.dart';
 export 'src/domain/capture_step.dart';
 export 'src/domain/result.dart';
 export 'src/domain/scan_selection.dart';
@@ -16,7 +17,8 @@ export 'src/domain/support_report.dart'
         SupportIssue,
         SupportIssueCode,
         SupportSeverity,
-        SupportRequirements;
+        SupportRequirements,
+        UsbProbeResult;
 export 'src/domain/capture_issue.dart';
 export 'src/domain/config.dart';
 export 'src/domain/uploader.dart';

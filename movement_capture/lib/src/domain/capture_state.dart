@@ -13,7 +13,16 @@ final class Initializing extends CaptureState {
   const Initializing();
 }
 
-enum CameraFailure { noCamera, permissionDenied, streamUnsupported, other }
+enum CameraFailure {
+  noCamera,
+  permissionDenied,
+  streamUnsupported,
+
+  /// A USB camera is attached but Android has not granted access yet. The
+  /// operator can fix it with one tap.
+  usbPermissionNeeded,
+  other,
+}
 
 final class CameraUnavailable extends CaptureState {
   const CameraUnavailable(this.reason);
