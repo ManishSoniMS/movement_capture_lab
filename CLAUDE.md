@@ -23,7 +23,7 @@ cd movement_capture && flutter test test/quality_timer_test.dart   # single test
 cd movement_capture && flutter test --plain-name "<name>"    # single test by name
 ```
 
-Root `test/` is empty; all tests live in `movement_capture/test/`. Baseline: 290 package tests pass and package analyze is clean. Root `flutter analyze` has 3 known infos (`unintended_html_in_doc_comment` in `uploaders.dart`, deprecated `Radio` `groupValue`/`onChanged` in `home_page.dart`); don't add new ones.
+Root `test/` is empty; all tests live in `movement_capture/test/`. Baseline: 294 package tests pass and package analyze is clean. Root `flutter analyze` has 3 known infos (`unintended_html_in_doc_comment` in `uploaders.dart`, deprecated `Radio` `groupValue`/`onChanged` in `home_page.dart`); don't add new ones.
 
 ## Workflow (TDD, zero regressions)
 

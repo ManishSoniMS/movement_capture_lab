@@ -337,3 +337,39 @@
 **Verification.** Package: `flutter test` 290 pass (264 + 26), `flutter analyze` clean. Root: `flutter analyze` 3 known infos (unchanged). Lint `lintRelease`: `NewApi` 0 on app and package. `flutter build apk --release` builds (147.9 MB). 16 KB: ELF LOAD align `0x1000` on all four UVC libs (fails), `zipalign -c -P 16 -v 4` passes (D-039). Kotlin compiles (`compileDebugKotlin`).
 
 **Device checks B-0..B-10: not run (need a device).**
+
+## Revision 16a: USB preview texture on the main thread
+
+**Branch:** `feat/usb-direct` (from `34533e2`). **Baseline:** package 290 tests pass, analyze clean.
+
+**Cause.** Device log: `usbOpen` failed with "Methods marked with @UiThread must be executed on the main thread. Current thread: movement-capture-usb". My Revision 16 spec (D4, all camera calls on one thread) was wrong for Flutter textures: `createSurfaceProducer`/`createSurfaceTexture` and `release()` are `@UiThread`. Also: `closeAll` released texture on the camera thread (error hidden by `catch Throwable`, texture leaked every open/close), released surface/texture before `stopPreview` (native preview thread could write to a freed surface), released the producer's own surface, and `probe` created an undisplayed Flutter texture.
+
+**Files.** `UsbDirectCamera.kt` (new `PreviewTarget`, `openOnMain`, `createTarget`, `resizeOnMain`, `releaseTarget`, `checkCameraThread`; `open`/`openCamera`/`probe`/`closeAll` reworked; `@UiThread`/`@WorkerThread`), `test/usb_threading_guard_test.dart` (new, 4 tests), `CHANGELOG.md`, `DECISIONS.md` (D-040, amends D4), `CLAUDE.md` (baseline 294).
+
+**Flow.** `usbOpen` (main): create target, post `open` to camera thread. Camera thread: close old, open UVC, choose mode, post `resize` to main and wait on a latch (1 s; fails the open on timeout), take the returned surface, start preview. Failure: `closeAll()` on camera thread, then `main.post { target.release() }`. Resize returns the surface after `setSize` because a `SurfaceProducer` may swap its surface on resize. Only a `Surface` wrapped around a `SurfaceTexture` is released by us; the producer's surface never.
+
+**Close order (camera thread).** recorder stop/reset/release + delete partial clip, `setFrameCallback(null)`, `stopPreview`, `close`, `destroy`, probe `ImageReader.close`, then target release on main.
+
+**Probe.** Opens 640x480 with a private `ImageReader` (RGBA_8888, discards images) as display, counts frames via the frame callback, closes. I could not check whether `UVCPreview` in `org.uvccamera:lib` 0.0.13 delivers callback frames with no display surface: the AAR ships only binaries, no native source. Chose the sink (safe either way) over trying "no display" first. Probe is also now superseded-safe: if another open starts meanwhile, it does not close the new camera.
+
+**Other fixes found in the audit.** `closeAll` used `removeCallbacksAndMessages(null)`, which could drop a queued open (leaking its target and never replying); now removes only the no-frame check. `width`, `height`, `openDeviceName` are `@Volatile` (read from native/monitor threads).
+
+**Thread table.**
+
+| Call | Thread |
+|---|---|
+| `TextureRegistry.create*`, `PreviewTarget.resize/release` | main |
+| `MethodChannel.Result` (`ok`/`fail`/`reply`) | main (`main.post`) |
+| `EventSink` frames and events | main (`main.post`) |
+| `USBMonitor` register/unregister/openDevice/requestPermission | camera thread; its callbacks arrive on the monitor's own thread and only `emit` (main) or `handler.post` |
+| `UVCCamera` open/preview/close/capture | camera thread; frame callback on native thread (copies, posts to main) |
+| `MediaRecorder` | camera thread |
+| `ImageReader` (probe) | created and closed on camera thread, listener on camera handler |
+| `UsbManager` list/find | main (`list`) and camera thread (`find`); thread-safe system service |
+
+**Tests.** Red: `usb_threading_guard_test.dart` failed 3 of 4 (creation/release outside main, no thread checks); green after the change. No JVM test for close order: the module has no test sources and `UVCCamera` is a final native class; not added.
+
+**Pros:** crash fixed, no texture leak, thread mistakes fail loudly. **Cons:** guard test is text-based; camera thread waits up to 1 s on main (frozen UI would fail the open cleanly); probe sink choice unverified on device.
+
+**Verification.** Package: `flutter test` 294 pass, `flutter analyze` clean. Root analyze: 3 known infos. `lintRelease` app + package: `WrongThread` 0, `NewApi` 0. `flutter build apk --release` OK (147.9 MB). Device checks T-1..T-5: not run (need a device).
+

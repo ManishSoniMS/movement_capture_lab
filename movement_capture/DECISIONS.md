@@ -192,3 +192,12 @@ All thresholds are in config.
 **Finding (release APK, 2026-11-05):** `llvm-readelf -lW` on `libUVCCamera.so`, `libuvc.so`, `libusb100.so`, `libjpeg-turbo1500.so` (arm64-v8a): every LOAD segment `Align 0x1000`; the 16 KB requirement needs `0x4000`. `zipalign -c -P 16 -v 4` on the APK: **Verification successful** (zip alignment only).
 **Decision:** Not blocking: the kiosk ships through MDM, not Google Play. **Play Store blocker for B2C** (Android 15+ with 16 KB pages, Play requirement from 1 Nov 2025 for new apps and updates targeting 15+).
 **Fix:** rebuild `org.uvccamera:lib` with NDK r28+ (or `-Wl,-z,max-page-size=16384`) and publish or vendor it.
+
+### D-040 · Amends D4 (Revision 16): camera work on one thread, Flutter textures on the main thread
+
+**Context.** Revision 16 said "all camera calls on one HandlerThread". `TextureRegistry.createSurfaceProducer()`, `createSurfaceTexture()` and their `release()` are `@UiThread`; on the camera thread, open threw and close swallowed the error (leaked texture).
+
+**Decision.** Camera work stays on one thread. Flutter textures (`PreviewTarget`) are created on the main thread before the camera opens, sized on the main thread after the mode is chosen (the camera thread waits up to 1 s; the main thread never waits), and released with `main.post` after `stopPreview`/`close`. Camera-thread functions start with `checkCameraThread()`. The probe draws into a private `ImageReader`, not a Flutter texture.
+
+**Guard.** `test/usb_threading_guard_test.dart` (text check) plus `WrongThread` lint.
+
